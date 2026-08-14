@@ -1,0 +1,456 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		009608EB0A93C62CF3ED8145 /* RTPAudioReceiverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11684E9F744EB2CEC7FE1762 /* RTPAudioReceiverTests.swift */; };
+		2148CBB3674C587C890CA287 /* LanPulseSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740CFD6A0E3E1EC93307F129 /* LanPulseSession.swift */; };
+		47239C5CE4613306089705F7 /* PairingScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1967580167D7C2DAAB12C035 /* PairingScanner.swift */; };
+		74C05C2EF2FE68BC29DD7C5F /* RTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C9C22EBFA04C24853CC3450 /* RTP.swift */; };
+		9D193E247817DF39715018CA /* RTPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D220A47DD40BE68CD72D5DD /* RTPTests.swift */; };
+		AF11783926AB0DB43EDB9C73 /* ProtocolModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF42B14B00241960A582F928 /* ProtocolModels.swift */; };
+		B09091031DDD02DB8DDD7B3E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E881816DDCD9C70017D78157 /* ContentView.swift */; };
+		D1992660B69C68FC64069962 /* LanPulseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37EF279D0888E34D0F4A82C1 /* LanPulseApp.swift */; };
+		DC8AB9C2E3DACEF774563A35 /* RTPAudioReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0172B0A1624FCE74D964E8 /* RTPAudioReceiver.swift */; };
+		FB0510484778FABCBFEFF64D /* Networking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74EB48D9BE9AFE3E35BA134C /* Networking.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		643810E571EA6420D89DE5CD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4387FFE39C876643C17A8941 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9A369BCE421A912B2A410131;
+			remoteInfo = LanPulseIOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		11684E9F744EB2CEC7FE1762 /* RTPAudioReceiverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTPAudioReceiverTests.swift; sourceTree = "<group>"; };
+		1967580167D7C2DAAB12C035 /* PairingScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanner.swift; sourceTree = "<group>"; };
+		1C9C22EBFA04C24853CC3450 /* RTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTP.swift; sourceTree = "<group>"; };
+		37EF279D0888E34D0F4A82C1 /* LanPulseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanPulseApp.swift; sourceTree = "<group>"; };
+		3D220A47DD40BE68CD72D5DD /* RTPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTPTests.swift; sourceTree = "<group>"; };
+		42F2E119273EF3D7C09F7067 /* LanPulseIOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LanPulseIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		740CFD6A0E3E1EC93307F129 /* LanPulseSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanPulseSession.swift; sourceTree = "<group>"; };
+		74EB48D9BE9AFE3E35BA134C /* Networking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Networking.swift; sourceTree = "<group>"; };
+		7D7EE1205B8C2B810B68C23D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7F0172B0A1624FCE74D964E8 /* RTPAudioReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTPAudioReceiver.swift; sourceTree = "<group>"; };
+		AF42B14B00241960A582F928 /* ProtocolModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolModels.swift; sourceTree = "<group>"; };
+		E881816DDCD9C70017D78157 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F4F404C56448D81768C66095 /* LanPulseIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LanPulseIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		26E1E3C4172C03E2D4598811 = {
+			isa = PBXGroup;
+			children = (
+				F947F4A1F9F71E019B51D89F /* LanPulseIOS */,
+				356429B1E36C3A0DCA979AC1 /* LanPulseIOSTests */,
+				FBCE3A14B0DA956F9762758E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		356429B1E36C3A0DCA979AC1 /* LanPulseIOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				11684E9F744EB2CEC7FE1762 /* RTPAudioReceiverTests.swift */,
+				3D220A47DD40BE68CD72D5DD /* RTPTests.swift */,
+			);
+			path = LanPulseIOSTests;
+			sourceTree = "<group>";
+		};
+		F947F4A1F9F71E019B51D89F /* LanPulseIOS */ = {
+			isa = PBXGroup;
+			children = (
+				E881816DDCD9C70017D78157 /* ContentView.swift */,
+				7D7EE1205B8C2B810B68C23D /* Info.plist */,
+				37EF279D0888E34D0F4A82C1 /* LanPulseApp.swift */,
+				740CFD6A0E3E1EC93307F129 /* LanPulseSession.swift */,
+				74EB48D9BE9AFE3E35BA134C /* Networking.swift */,
+				1967580167D7C2DAAB12C035 /* PairingScanner.swift */,
+				AF42B14B00241960A582F928 /* ProtocolModels.swift */,
+				1C9C22EBFA04C24853CC3450 /* RTP.swift */,
+				7F0172B0A1624FCE74D964E8 /* RTPAudioReceiver.swift */,
+			);
+			path = LanPulseIOS;
+			sourceTree = "<group>";
+		};
+		FBCE3A14B0DA956F9762758E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F4F404C56448D81768C66095 /* LanPulseIOS.app */,
+				42F2E119273EF3D7C09F7067 /* LanPulseIOSTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9A369BCE421A912B2A410131 /* LanPulseIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3138EF91A0E157F2C3395156 /* Build configuration list for PBXNativeTarget "LanPulseIOS" */;
+			buildPhases = (
+				36B7327D8FC60057804885A2 /* Build shared Compose framework */,
+				7202B3D6DE82A2040E0EA51A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LanPulseIOS;
+			productName = LanPulseIOS;
+			productReference = F4F404C56448D81768C66095 /* LanPulseIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D540B5ACC4F4CCDBD8F517AD /* LanPulseIOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D417885C4B9CD9B76B6ECB8A /* Build configuration list for PBXNativeTarget "LanPulseIOSTests" */;
+			buildPhases = (
+				F1D0AC52971798F456DEB081 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				20A0409E4EDD94013D55AF71 /* PBXTargetDependency */,
+			);
+			name = LanPulseIOSTests;
+			productName = LanPulseIOSTests;
+			productReference = 42F2E119273EF3D7C09F7067 /* LanPulseIOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4387FFE39C876643C17A8941 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					9A369BCE421A912B2A410131 = {
+						DevelopmentTeam = "";
+					};
+					D540B5ACC4F4CCDBD8F517AD = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 863B417BD30F8F4690A6ACD2 /* Build configuration list for PBXProject "LanPulseIOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 26E1E3C4172C03E2D4598811;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9A369BCE421A912B2A410131 /* LanPulseIOS */,
+				D540B5ACC4F4CCDBD8F517AD /* LanPulseIOSTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		36B7327D8FC60057804885A2 /* Build shared Compose framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build shared Compose framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7202B3D6DE82A2040E0EA51A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B09091031DDD02DB8DDD7B3E /* ContentView.swift in Sources */,
+				D1992660B69C68FC64069962 /* LanPulseApp.swift in Sources */,
+				2148CBB3674C587C890CA287 /* LanPulseSession.swift in Sources */,
+				FB0510484778FABCBFEFF64D /* Networking.swift in Sources */,
+				47239C5CE4613306089705F7 /* PairingScanner.swift in Sources */,
+				AF11783926AB0DB43EDB9C73 /* ProtocolModels.swift in Sources */,
+				74C05C2EF2FE68BC29DD7C5F /* RTP.swift in Sources */,
+				DC8AB9C2E3DACEF774563A35 /* RTPAudioReceiver.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F1D0AC52971798F456DEB081 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				009608EB0A93C62CF3ED8145 /* RTPAudioReceiverTests.swift in Sources */,
+				9D193E247817DF39715018CA /* RTPTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		20A0409E4EDD94013D55AF71 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9A369BCE421A912B2A410131 /* LanPulseIOS */;
+			targetProxy = 643810E571EA6420D89DE5CD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		026C3085321A783E7F620425 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lanpulse.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LanPulseIOS.app/LanPulseIOS";
+			};
+			name = Release;
+		};
+		0C61FCF4FBD90690EC545281 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		1E51AAE5D85F4F55316C5755 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		1F9A5502787F66DC0E7EB08B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LanPulseIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = "$(inherited) -framework Shared";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lanpulse.ios;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		7F64C9FD7360B0280298485C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LanPulseIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = "$(inherited) -framework Shared";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lanpulse.ios;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		AC72E5672F062FF5F89FD48A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lanpulse.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LanPulseIOS.app/LanPulseIOS";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3138EF91A0E157F2C3395156 /* Build configuration list for PBXNativeTarget "LanPulseIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1F9A5502787F66DC0E7EB08B /* Debug */,
+				7F64C9FD7360B0280298485C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		863B417BD30F8F4690A6ACD2 /* Build configuration list for PBXProject "LanPulseIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0C61FCF4FBD90690EC545281 /* Debug */,
+				1E51AAE5D85F4F55316C5755 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D417885C4B9CD9B76B6ECB8A /* Build configuration list for PBXNativeTarget "LanPulseIOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC72E5672F062FF5F89FD48A /* Debug */,
+				026C3085321A783E7F620425 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 4387FFE39C876643C17A8941 /* Project object */;
+}

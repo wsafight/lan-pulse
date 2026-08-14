@@ -1,0 +1,13 @@
+/target/
+**/target/
+*.log
+.env
+
+# Kotlin / Android
+**/.gradle/
+**/.kotlin/
+**/build/
+mobile/local.properties
+mobile/.idea/
+*.iml
+.DS_Store

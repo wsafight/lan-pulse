@@ -1,0 +1,6 @@
+[workspace]
+members = ["desktop-service", "desktop-app"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
