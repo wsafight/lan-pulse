@@ -1,12 +1,21 @@
 use anyhow::{Result, anyhow};
 
 pub const RTP_HEADER_LEN: usize = 12;
+pub const RTP_NACK_LEN: usize = 12;
+const RTP_NACK_MAGIC: [u8; 4] = *b"LPNK";
+const RTP_NACK_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RtpHeader {
     pub payload_type: u8,
     pub sequence_number: u16,
     pub timestamp: u32,
+    pub ssrc: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RtpNack {
+    pub sequence_number: u16,
     pub ssrc: u32,
 }
 
@@ -76,9 +85,23 @@ pub fn parse_header(packet: &[u8]) -> Result<RtpHeader> {
     })
 }
 
+pub fn parse_nack(packet: &[u8]) -> Option<RtpNack> {
+    if packet.len() != RTP_NACK_LEN
+        || packet[..4] != RTP_NACK_MAGIC
+        || packet[4] != RTP_NACK_VERSION
+        || packet[5] != 0
+    {
+        return None;
+    }
+    Some(RtpNack {
+        sequence_number: u16::from_be_bytes([packet[6], packet[7]]),
+        ssrc: u32::from_be_bytes([packet[8], packet[9], packet[10], packet[11]]),
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{RTP_HEADER_LEN, RtpPacketizer, parse_header};
+    use super::{RTP_HEADER_LEN, RTP_NACK_LEN, RtpNack, RtpPacketizer, parse_header, parse_nack};
 
     #[test]
     fn packetizes_rtp_header_and_payload() {
@@ -142,5 +165,26 @@ mod tests {
         assert_eq!(header.sequence_number, 0x1234);
         assert_eq!(header.timestamp, 7);
         assert_eq!(header.ssrc, 9);
+    }
+
+    #[test]
+    fn parses_versioned_bounded_retransmit_request() {
+        let mut packet = [0_u8; RTP_NACK_LEN];
+        packet[..4].copy_from_slice(b"LPNK");
+        packet[4] = 1;
+        packet[6..8].copy_from_slice(&0x1234_u16.to_be_bytes());
+        packet[8..12].copy_from_slice(&0x5566_7788_u32.to_be_bytes());
+
+        assert_eq!(
+            parse_nack(&packet),
+            Some(RtpNack {
+                sequence_number: 0x1234,
+                ssrc: 0x5566_7788,
+            })
+        );
+
+        packet[4] = 2;
+        assert_eq!(parse_nack(&packet), None);
+        assert_eq!(parse_nack(&packet[..RTP_NACK_LEN - 1]), None);
     }
 }

@@ -1,5 +1,6 @@
 package com.lanpulse.mobile.android
 
+import com.lanpulse.mobile.PlaybackMode
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -77,13 +78,30 @@ class RtpPacketTest {
         val buffer = RtpJitterBuffer(targetPacketCount = 4, maxBufferedPackets = 12)
         (100..103).forEach { buffer.offer(packet(it)) }
         startAndDrain(buffer, 4)
+        assertFalse(buffer.hasPacketAfterExpected())
 
         buffer.offer(packet(105))
+        assertTrue(buffer.hasPacketAfterExpected())
         assertFalse(buffer.shouldConcealExpected())
 
         buffer.offer(packet(104))
         assertContentEquals(payload(104), buffer.pollExpected()?.payloadCopy())
         assertContentEquals(payload(105), buffer.pollExpected()?.payloadCopy())
+        assertFalse(buffer.hasPacketAfterExpected())
+    }
+
+    @Test
+    fun jitterBufferReportsSequenceSpanForLayeredPlaybackBuffering() {
+        val buffer = RtpJitterBuffer(targetPacketCount = 4, maxBufferedPackets = 12)
+        (100..103).forEach { buffer.offer(packet(it)) }
+        buffer.startNearLive()
+
+        assertEquals(4, buffer.bufferedSpanPackets())
+        assertNotNull(buffer.pollExpected())
+        assertEquals(3, buffer.bufferedSpanPackets())
+
+        buffer.offer(packet(105))
+        assertEquals(5, buffer.bufferedSpanPackets())
     }
 
     @Test
@@ -128,6 +146,18 @@ class RtpPacketTest {
         repeat(2) { assertNotNull(buffer.pollExpected()) }
         assertContentEquals(payload(41), buffer.pollExpected()?.payloadCopy())
         assertEquals(0, buffer.bufferedLeadPackets())
+    }
+
+    @Test
+    fun jitterBufferReportsWhenModeSpecificLiveLeadIsExceeded() {
+        val buffer = RtpJitterBuffer(targetPacketCount = 4, maxBufferedPackets = 12)
+        (0..3).forEach { buffer.offer(packet(it)) }
+        buffer.startNearLive()
+        (4..6).forEach { buffer.offer(packet(it)) }
+
+        assertFalse(buffer.exceedsLeadLimit(6))
+        buffer.offer(packet(7))
+        assertTrue(buffer.exceedsLeadLimit(6))
     }
 
     @Test
@@ -213,7 +243,48 @@ class RtpPacketTest {
     }
 
     @Test
-    fun stableNetworkShrinksAdaptiveBufferToFiveHundredMilliseconds() {
+    fun jitterBufferPrunesOldSlotsIncrementally() {
+        val recycled = mutableListOf<Int>()
+        val buffer = RtpJitterBuffer(
+            targetPacketCount = 2,
+            maxBufferedPackets = 4,
+            recycle = { recycled += it.sequence },
+        )
+        buffer.offer(packet(0))
+
+        (20..23).forEach { buffer.offer(packet(it)) }
+
+        assertEquals(1, buffer.prunedPackets)
+        assertEquals(listOf(0), recycled)
+    }
+
+    @Test
+    fun encodesBoundedVersionedRtpNack() {
+        val bytes = ByteArray(RTP_NACK_PACKET_BYTES)
+
+        encodeRtpNack(bytes, sequence = 0x1234, ssrc = 0x5566_7788)
+
+        assertContentEquals(
+            byteArrayOf(
+                'L'.code.toByte(),
+                'P'.code.toByte(),
+                'N'.code.toByte(),
+                'K'.code.toByte(),
+                1,
+                0,
+                0x12,
+                0x34,
+                0x55,
+                0x66,
+                0x77,
+                0x88.toByte(),
+            ),
+            bytes,
+        )
+    }
+
+    @Test
+    fun stableNetworkShrinksAdaptiveBufferToFortyMilliseconds() {
         val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
         var timestamp = 0L
         var arrival = 0L
@@ -224,7 +295,7 @@ class RtpPacketTest {
             arrival += 5_000_000
         }
 
-        assertEquals(100, controller.targetPacketCount)
+        assertEquals(8, controller.targetPacketCount)
         assertTrue(controller.jitterMs < 0.01)
     }
 
@@ -252,12 +323,12 @@ class RtpPacketTest {
             arrival += if (index % 2 == 0) 1_000_000 else 100_000_000
         }
 
-        assertTrue(controller.targetPacketCount > 120)
+        assertTrue(controller.targetPacketCount > 24)
         assertTrue(controller.jitterMs > 1.0)
     }
 
     @Test
-    fun adaptiveBufferReturnsToFiveHundredMillisecondsAfterNetworkStabilizes() {
+    fun adaptiveBufferReturnsToFortyMillisecondsAfterNetworkStabilizes() {
         val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
         var timestamp = 0L
         var arrival = 1_000_000_000L
@@ -269,7 +340,7 @@ class RtpPacketTest {
             arrival += 5_000_000
         }
 
-        assertEquals(100, controller.targetPacketCount)
+        assertEquals(8, controller.targetPacketCount)
     }
 
     @Test
@@ -278,7 +349,7 @@ class RtpPacketTest {
 
         controller.onUnderrun(1_000_000_000)
 
-        assertEquals(121, controller.targetPacketCount)
+        assertEquals(25, controller.targetPacketCount)
     }
 
     @Test
@@ -289,13 +360,13 @@ class RtpPacketTest {
         var timestamp = 0L
         var arrival = underrunAt
 
-        repeat(10_000) {
+        repeat(4_000) {
             controller.observe(timestamp, arrival)
             timestamp = (timestamp + 240) and 0xFFFF_FFFFL
             arrival += 5_000_000
         }
 
-        assertEquals(128, controller.targetPacketCount)
+        assertEquals(32, controller.targetPacketCount)
     }
 
     @Test
@@ -304,7 +375,49 @@ class RtpPacketTest {
 
         controller.onBacklog(1_000_000_000L)
 
-        assertEquals(160, controller.targetPacketCount)
+        assertEquals(90, controller.targetPacketCount)
+    }
+
+    @Test
+    fun schedulingDelaySpikeRaisesAdaptiveTargetImmediately() {
+        val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
+
+        controller.observe(timestamp = 0, arrivalNanos = 0)
+        controller.observe(timestamp = 240, arrivalNanos = 300_000_000)
+
+        assertEquals(64, controller.targetPacketCount)
+    }
+
+    @Test
+    fun immediatePlaybackUsesOnePacketAndDirectWrites() {
+        val policy = playbackBufferPolicy(PlaybackMode.Immediate)
+        val controller = AdaptiveJitterController(
+            sampleRate = 48_000,
+            packetMs = 5,
+            initialBufferMs = policy.initialBufferMs,
+            minBufferMs = policy.minBufferMs,
+            maxBufferMs = policy.maxBufferMs,
+        )
+
+        controller.observe(timestamp = 0, arrivalNanos = 0)
+        controller.observe(timestamp = 240, arrivalNanos = 300_000_000)
+        controller.onUnderrun(300_000_000, severityPackets = 8)
+        controller.onBacklog(300_000_000)
+
+        assertEquals(1, controller.targetPacketCount)
+        assertEquals(1, policy.outputBufferMs)
+        assertTrue(policy.directWrite)
+    }
+
+    @Test
+    fun adaptivePlaybackUsesAutomaticFortyToFourHundredFiftyMillisecondRange() {
+        val policy = playbackBufferPolicy(PlaybackMode.Adaptive)
+
+        assertEquals(40, policy.minBufferMs)
+        assertEquals(120, policy.initialBufferMs)
+        assertEquals(450, policy.maxBufferMs)
+        assertEquals(60, policy.outputBufferMs)
+        assertFalse(policy.directWrite)
     }
 
     @Test
@@ -329,20 +442,28 @@ class RtpPacketTest {
     }
 
     @Test
+    fun driftControllerTemporarilyAcceleratesForLargeQueueError() {
+        val controller = ClockDriftController(framesPerPacket = 240)
+        repeat(4) { controller.correction(1_200, 720) }
+
+        assertEquals(-1, controller.correction(2_000, 720))
+        assertEquals(-1, controller.correction(2_000, 720))
+    }
+
+    @Test
     fun missingPacketWaitUsesAvailablePlaybackQueueWithoutDrainingItsReserve() {
         assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 240, sampleRate = 48_000))
         assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 1_440, sampleRate = 48_000))
-        assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 4_800, sampleRate = 48_000))
+        assertEquals(22, missingPacketWaitMs(packetMs = 5, queuedFrames = 3_936, sampleRate = 48_000))
+        assertEquals(40, missingPacketWaitMs(packetMs = 5, queuedFrames = 4_800, sampleRate = 48_000))
         assertEquals(100, missingPacketWaitMs(packetMs = 5, queuedFrames = 9_600, sampleRate = 48_000))
     }
 
     @Test
-    fun concealmentRefillsPlaybackQueueToItsSafetyReserve() {
-        assertEquals(20, concealmentPacketCount(packetMs = 5, queuedFrames = 0, sampleRate = 48_000))
-        assertEquals(16, concealmentPacketCount(packetMs = 5, queuedFrames = 960, sampleRate = 48_000))
-        assertEquals(8, concealmentPacketCount(packetMs = 5, queuedFrames = 2_880, sampleRate = 48_000))
-        assertEquals(0, concealmentPacketCount(packetMs = 5, queuedFrames = 4_800, sampleRate = 48_000))
-        assertEquals(0, concealmentPacketCount(packetMs = 5, queuedFrames = 9_600, sampleRate = 48_000))
+    fun missingPacketCanWaitOnlyWhilePlaybackQueueExceedsItsSafetyReserve() {
+        assertFalse(canWaitForMissingPacket(queuedFrames = 2_880, sampleRate = 48_000))
+        assertTrue(canWaitForMissingPacket(queuedFrames = 2_881, sampleRate = 48_000))
+        assertTrue(canWaitForMissingPacket(queuedFrames = 9_600, sampleRate = 48_000))
     }
 
     @Test

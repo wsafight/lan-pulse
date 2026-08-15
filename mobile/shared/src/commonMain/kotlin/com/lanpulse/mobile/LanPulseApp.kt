@@ -29,13 +29,12 @@ import androidx.compose.material.Card
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Colors
 import androidx.compose.material.Divider
-import androidx.compose.material.DropdownMenu
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.OutlinedButton
+import androidx.compose.material.RadioButton
 import androidx.compose.material.Scaffold
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -44,12 +43,12 @@ import androidx.compose.material.TopAppBar
 import androidx.compose.material.Typography
 import androidx.compose.material.darkColors
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.lightColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +70,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlin.math.roundToInt
 
 private val Accent = Color(0xFF138A5B)
@@ -87,6 +88,7 @@ fun LanPulseApp(client: LanPulseClient) {
     val state by controller.state.collectAsState()
     val dark = isSystemInDarkTheme()
     val strings = state.language.strings()
+    var showSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(controller) {
         controller.discover()
@@ -101,9 +103,8 @@ fun LanPulseApp(client: LanPulseClient) {
             topBar = {
                 AppBar(
                     playback = state.playback,
-                    language = state.language,
                     strings = strings,
-                    onLanguageSelected = controller::selectLanguage,
+                    onOpenSettings = { showSettings = true },
                 )
             },
         ) { scaffoldPadding ->
@@ -171,15 +172,23 @@ fun LanPulseApp(client: LanPulseClient) {
                 }
             }
         }
+        if (showSettings) {
+            SettingsDialog(
+                state = state,
+                strings = strings,
+                onDismiss = { showSettings = false },
+                onLanguageSelected = controller::selectLanguage,
+                onPlaybackModeSelected = controller::selectPlaybackMode,
+            )
+        }
     }
 }
 
 @Composable
 private fun AppBar(
     playback: PlaybackState,
-    language: MobileLanguage,
     strings: MobileStrings,
-    onLanguageSelected: (MobileLanguage) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     TopAppBar(
         modifier = Modifier.statusBarsPadding(),
@@ -192,8 +201,11 @@ private fun AppBar(
         },
         actions = {
             StatusBadge(playback, strings)
-            LanguageMenu(language, strings, onLanguageSelected)
-            Spacer(Modifier.size(12.dp))
+            Spacer(Modifier.size(6.dp))
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, contentDescription = strings.settings)
+            }
+            Spacer(Modifier.size(4.dp))
         },
         backgroundColor = MaterialTheme.colors.surface,
         contentColor = MaterialTheme.colors.onSurface,
@@ -230,36 +242,158 @@ private fun StatusBadge(playback: PlaybackState, strings: MobileStrings) {
 }
 
 @Composable
-private fun LanguageMenu(
-    language: MobileLanguage,
+private fun SettingsDialog(
+    state: MobileUiState,
     strings: MobileStrings,
-    onSelected: (MobileLanguage) -> Unit,
+    onDismiss: () -> Unit,
+    onLanguageSelected: (MobileLanguage) -> Unit,
+    onPlaybackModeSelected: (PlaybackMode) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { expanded = true }) {
-            Text(language.displayName)
-            Icon(Icons.Default.ArrowDropDown, contentDescription = strings.language)
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colors.background,
         ) {
-            for (value in MobileLanguage.entries) {
-                DropdownMenuItem(
-                    onClick = {
-                        expanded = false
-                        onSelected(value)
-                    },
+            Scaffold(
+                backgroundColor = MaterialTheme.colors.background,
+                topBar = {
+                    TopAppBar(
+                        modifier = Modifier.statusBarsPadding(),
+                        navigationIcon = {
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = strings.back,
+                                )
+                            }
+                        },
+                        title = {
+                            Text(
+                                text = strings.settings,
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        },
+                        backgroundColor = MaterialTheme.colors.surface,
+                        contentColor = MaterialTheme.colors.onSurface,
+                        elevation = 0.dp,
+                    )
+                },
+            ) { scaffoldPadding ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(scaffoldPadding)
+                        .navigationBarsPadding(),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                        if (value == language) {
-                            Icon(Icons.Default.Check, contentDescription = null)
+                    if (state.supportsPlaybackMode) {
+                        item(key = "playback-mode-title") {
+                            SettingsSectionTitle(strings.playbackMode)
+                        }
+                        item(key = "playback-mode-immediate") {
+                            SettingsChoice(
+                                title = strings.immediatePlayback,
+                                description = strings.immediatePlaybackDescription,
+                                selected = state.playbackMode == PlaybackMode.Immediate,
+                                enabled = state.playback is PlaybackState.Idle ||
+                                    state.playback is PlaybackState.Failed,
+                                onClick = { onPlaybackModeSelected(PlaybackMode.Immediate) },
+                            )
+                        }
+                        item(key = "playback-mode-adaptive") {
+                            SettingsChoice(
+                                title = strings.adaptivePlayback,
+                                description = strings.adaptivePlaybackDescription,
+                                selected = state.playbackMode == PlaybackMode.Adaptive,
+                                enabled = state.playback is PlaybackState.Idle ||
+                                    state.playback is PlaybackState.Failed,
+                                onClick = { onPlaybackModeSelected(PlaybackMode.Adaptive) },
+                            )
+                        }
+                        if (state.playback !is PlaybackState.Idle &&
+                            state.playback !is PlaybackState.Failed
+                        ) {
+                            item(key = "playback-mode-disabled") {
+                                Text(
+                                    text = strings.disconnectToChangePlaybackMode,
+                                    style = MaterialTheme.typography.caption,
+                                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
+                                )
+                            }
+                        }
+                        item(key = "settings-divider") {
+                            Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.1f))
                         }
                     }
-                    Spacer(Modifier.size(8.dp))
-                    Text(value.displayName)
+
+                    item(key = "language-title") {
+                        SettingsSectionTitle(strings.language)
+                    }
+                    items(MobileLanguage.entries, key = MobileLanguage::code) { language ->
+                        SettingsChoice(
+                            title = language.displayName,
+                            description = null,
+                            selected = state.language == language,
+                            onClick = { onLanguageSelected(language) },
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.subtitle1,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
+private fun SettingsChoice(
+    title: String,
+    description: String?,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+        Spacer(Modifier.size(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.body1,
+                color = MaterialTheme.colors.onSurface.copy(alpha = if (enabled) 1f else 0.45f),
+            )
+            description?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = if (enabled) 0.62f else 0.4f),
+                )
             }
         }
     }

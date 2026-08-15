@@ -277,8 +277,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn producer_coalesces_partial_pcm_into_packet_frames() {
+    #[tokio::test]
+    async fn producer_coalesces_partial_pcm_into_packet_frames() {
         let (frames_tx, mut frames_rx) = RingBuffer::new(4);
         let (mut recycled_tx, recycled_rx) = RingBuffer::new(4);
         for _ in 0..4 {
@@ -295,8 +295,8 @@ mod tests {
         assert_eq!(frames_rx.pop().unwrap(), vec![5, 6, 7, 8]);
     }
 
-    #[test]
-    fn producer_records_drop_when_frame_queue_is_full() {
+    #[tokio::test]
+    async fn producer_records_drop_when_frame_queue_is_full() {
         let (frames_tx, mut frames_rx) = RingBuffer::new(1);
         let (mut recycled_tx, recycled_rx) = RingBuffer::new(2);
         for _ in 0..2 {

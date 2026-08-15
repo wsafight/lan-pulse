@@ -460,9 +460,7 @@ mod tests {
     #[tokio::test]
     async fn status_response_reflects_session_state() {
         let state = state();
-        state
-            .record_packet(100, std::time::Duration::from_millis(5))
-            .await;
+        state.record_packet(100, std::time::Duration::from_millis(5));
 
         let Json(response) = status(State(Arc::clone(&state)), ConnectInfo(loopback())).await;
 

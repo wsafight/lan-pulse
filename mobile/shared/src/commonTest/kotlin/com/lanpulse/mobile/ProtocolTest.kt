@@ -13,6 +13,14 @@ import kotlin.test.assertTrue
 
 class ProtocolTest {
     @Test
+    fun playbackModeDefaultsToAdaptiveForMissingOrUnknownStoredValues() {
+        assertEquals(PlaybackMode.Immediate, PlaybackMode.fromStorageValue("immediate"))
+        assertEquals(PlaybackMode.Adaptive, PlaybackMode.fromStorageValue("adaptive"))
+        assertEquals(PlaybackMode.Adaptive, PlaybackMode.fromStorageValue(null))
+        assertEquals(PlaybackMode.Adaptive, PlaybackMode.fromStorageValue("future-mode"))
+    }
+
+    @Test
     fun serializesStableClientAndSessionIds() {
         val connectPayload = Json.parseToJsonElement(
             lanPulseJson.encodeToString(
@@ -40,6 +48,7 @@ class ProtocolTest {
             connectPayload.getValue("min_supported_protocol_version").jsonPrimitive.int,
         )
         assertTrue(connectPayload.getValue("capabilities").toString().contains("rtp-unicast"))
+        assertTrue(connectPayload.getValue("capabilities").toString().contains("rtp-nack-v1"))
 
         val disconnectPayload = Json.parseToJsonElement(
             lanPulseJson.encodeToString(
@@ -75,6 +84,7 @@ class ProtocolTest {
         assertEquals(1, response.protocolVersion)
         assertEquals(1, response.minSupportedProtocolVersion)
         assertTrue(response.capabilities.contains("session-id"))
+        assertFalse(response.capabilities.contains("rtp-nack-v1"))
         assertTrue(response.isProtocolCompatible())
     }
 

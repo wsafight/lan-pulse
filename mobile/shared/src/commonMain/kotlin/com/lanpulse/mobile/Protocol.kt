@@ -11,14 +11,18 @@ const val LANPULSE_CAPABILITY_RTP_UNICAST = "rtp-unicast"
 const val LANPULSE_CAPABILITY_SESSION_ID = "session-id"
 const val LANPULSE_CAPABILITY_CLIENT_ID = "client-id"
 const val LANPULSE_CAPABILITY_LEASE_HEARTBEAT = "lease-heartbeat"
+const val LANPULSE_CAPABILITY_RTP_NACK_V1 = "rtp-nack-v1"
 
-val LANPULSE_CAPABILITIES: List<String> = listOf(
+private val LANPULSE_LEGACY_CAPABILITIES: List<String> = listOf(
     LANPULSE_CAPABILITY_PCM_S16LE,
     LANPULSE_CAPABILITY_RTP_UNICAST,
     LANPULSE_CAPABILITY_SESSION_ID,
     LANPULSE_CAPABILITY_CLIENT_ID,
     LANPULSE_CAPABILITY_LEASE_HEARTBEAT,
 )
+
+val LANPULSE_CAPABILITIES: List<String> =
+    LANPULSE_LEGACY_CAPABILITIES + LANPULSE_CAPABILITY_RTP_NACK_V1
 
 val lanPulseJson: Json = Json {
     ignoreUnknownKeys = true
@@ -57,7 +61,7 @@ data class DiscoveryResponse(
     val protocolVersion: Int = LANPULSE_PROTOCOL_VERSION,
     @SerialName("min_supported_protocol_version")
     val minSupportedProtocolVersion: Int = LANPULSE_MIN_SUPPORTED_PROTOCOL_VERSION,
-    val capabilities: List<String> = LANPULSE_CAPABILITIES,
+    val capabilities: List<String> = LANPULSE_LEGACY_CAPABILITIES,
 ) {
     fun isProtocolCompatible(): Boolean =
         protocolVersionsAreCompatible(protocolVersion, minSupportedProtocolVersion) &&
@@ -70,7 +74,7 @@ data class DesktopEndpoint(
     val audio: AudioConfig?,
     val protocolVersion: Int = LANPULSE_PROTOCOL_VERSION,
     val minSupportedProtocolVersion: Int = LANPULSE_MIN_SUPPORTED_PROTOCOL_VERSION,
-    val capabilities: List<String> = LANPULSE_CAPABILITIES,
+    val capabilities: List<String> = LANPULSE_LEGACY_CAPABILITIES,
 ) {
     val id: String = controlUrl.trimEnd('/')
 }
@@ -96,7 +100,7 @@ data class ConnectResponse(
     @SerialName("protocol_version") val protocolVersion: Int = LANPULSE_PROTOCOL_VERSION,
     @SerialName("min_supported_protocol_version") val minSupportedProtocolVersion: Int =
         LANPULSE_MIN_SUPPORTED_PROTOCOL_VERSION,
-    val capabilities: List<String> = LANPULSE_CAPABILITIES,
+    val capabilities: List<String> = LANPULSE_LEGACY_CAPABILITIES,
     val media: MediaConfig? = null,
 ) {
     fun isProtocolCompatible(): Boolean =

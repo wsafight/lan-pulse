@@ -16,6 +16,7 @@ internal class RtpJitterBuffer(
     private var latestSequence: Int? = null
     private var sequenceRestartCandidate: Int? = null
     private var sequenceRestartCandidatePackets = 0
+    private var pruneCursor = 0
 
     var duplicatePackets: Long = 0
         private set
@@ -67,7 +68,7 @@ internal class RtpJitterBuffer(
         }
         slots[slot] = packet
         pendingCount += 1
-        pruneOldPackets()
+        pruneOldPacketsIncrementally()
     }
 
     fun readyToStart(): Boolean = pendingCount >= targetPacketCount
@@ -88,7 +89,6 @@ internal class RtpJitterBuffer(
         slots[slot] = null
         pendingCount -= 1
         expectedSequence = nextSequence(expected)
-        pruneBeforeExpected()
         return packet
     }
 
@@ -102,7 +102,6 @@ internal class RtpJitterBuffer(
             recycle(packet)
         }
         expectedSequence = nextSequence(expected)
-        pruneBeforeExpected()
     }
 
     fun shouldConcealExpected(): Boolean {
@@ -112,8 +111,13 @@ internal class RtpJitterBuffer(
         return bufferedLeadPackets() >= missingPacketLookahead()
     }
 
+    fun hasPacketAfterExpected(): Boolean = bufferedLeadPackets() > 0
+
     fun needsLatencyReset(): Boolean =
         bufferedLeadPackets() > maxBufferedPackets * LATENCY_RESET_MULTIPLIER
+
+    fun exceedsLeadLimit(maxLeadPackets: Int): Boolean =
+        bufferedLeadPackets() > maxLeadPackets
 
     fun needsSequenceReset(): Boolean =
         sequenceRestartCandidatePackets >= LATE_PACKET_RESET_THRESHOLD
@@ -126,6 +130,7 @@ internal class RtpJitterBuffer(
         pendingCount = 0
         expectedSequence = null
         latestSequence = null
+        pruneCursor = 0
         clearSequenceRestartCandidate()
     }
 
@@ -135,6 +140,15 @@ internal class RtpJitterBuffer(
         val distance = forwardDistance(expected, latest)
         return if (distance < HALF_SEQUENCE_RANGE) distance else 0
     }
+
+    internal fun bufferedSpanPackets(): Int {
+        val expected = expectedSequence ?: return 0
+        val latest = latestSequence ?: return 0
+        val distance = forwardDistance(expected, latest)
+        return if (distance < HALF_SEQUENCE_RANGE) distance + 1 else 0
+    }
+
+    internal fun expectedSequenceNumber(): Int? = expectedSequence
 
     private fun pruneBeforeExpected() {
         val expected = expectedSequence ?: return
@@ -149,11 +163,13 @@ internal class RtpJitterBuffer(
         }
     }
 
-    private fun pruneOldPackets() {
+    private fun pruneOldPacketsIncrementally() {
         val latest = latestSequence ?: return
         val maximumAge = maxBufferedPackets * STORED_PACKET_MULTIPLIER
-        slots.indices.forEach { slot ->
-            val packet = slots[slot] ?: return@forEach
+        repeat(PRUNE_SLOTS_PER_OFFER) {
+            val slot = pruneCursor
+            pruneCursor = (pruneCursor + 1) and slotMask
+            val packet = slots[slot] ?: return@repeat
             val age = forwardDistance(packet.sequence, latest)
             if (age < HALF_SEQUENCE_RANGE && age > maximumAge) {
                 slots[slot] = null
@@ -197,6 +213,7 @@ internal class RtpJitterBuffer(
         const val MAX_RESTART_CANDIDATE_GAP = 4
         const val LATENCY_RESET_MULTIPLIER = 3
         const val STORED_PACKET_MULTIPLIER = 4
+        const val PRUNE_SLOTS_PER_OFFER = 4
 
         fun nextSequence(sequence: Int): Int = (sequence + 1) and SEQUENCE_MASK
 

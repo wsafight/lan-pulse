@@ -29,6 +29,17 @@ sealed interface PlaybackState {
     data class Failed(val message: String) : PlaybackState
 }
 
+enum class PlaybackMode(val storageValue: String) {
+    Immediate("immediate"),
+    Adaptive("adaptive"),
+    ;
+
+    companion object {
+        fun fromStorageValue(value: String?): PlaybackMode =
+            entries.firstOrNull { it.storageValue == value } ?: Adaptive
+    }
+}
+
 sealed interface PairingScanEvent {
     data class Found(val pairing: PairingCode) : PairingScanEvent
     data class Failed(val message: String) : PairingScanEvent
@@ -38,16 +49,27 @@ interface LanPulseClient {
     val playbackState: StateFlow<PlaybackState>
     val initialLanguage: MobileLanguage
         get() = MobileLanguage.En
+    val initialPlaybackMode: PlaybackMode
+        get() = PlaybackMode.Adaptive
+    val supportsPlaybackMode: Boolean
+        get() = false
     val pairingScanEvents: Flow<PairingScanEvent>
         get() = emptyFlow()
 
     suspend fun discover(): List<DesktopEndpoint>
 
-    fun connect(endpoint: DesktopEndpoint, pin: String, language: MobileLanguage)
+    fun connect(
+        endpoint: DesktopEndpoint,
+        pin: String,
+        language: MobileLanguage,
+        playbackMode: PlaybackMode,
+    )
 
     fun disconnect()
 
     fun scanPairingCode(language: MobileLanguage) {}
 
     fun saveLanguage(language: MobileLanguage) {}
+
+    fun savePlaybackMode(playbackMode: PlaybackMode) {}
 }

@@ -76,9 +76,9 @@ Rust native desktop shell
 - `mobile/shared` KMP 模块，为 Android 和 iPhone 提供同一份 Compose UI、配对流程、校验、多语言和播放状态控制器。
 - Android 平台客户端，包含局域网发现、手动配对和原生播放集成。
 - Android `mediaPlayback` 前台服务、通知栏断开操作、局部唤醒锁和 Wi-Fi 高性能锁。
-- Android UDP/RTP 接收和低延迟 `AudioTrack` PCM 播放，包含 15 ms 初始自适应缓冲、10-60 ms 调整范围、丢包静音补偿、时钟漂移修正、流超时检测、临时故障后的 session resume、网络感知重连，以及实时队列/抖动/underrun 诊断。
+- Android UDP/RTP 接收和 `AudioTrack` PCM 播放，使用独立音频优先级收包线程，并提供两种可持久化的播放方式：即时播放只保留当前 RTP 包，向系统允许的最小输出容量执行非阻塞写入，不等待快速重传、不修正时钟漂移，欠载后也不重新缓冲；自适应播放从 120 ms 开始，在 40-450 ms 内自动调整，输出目标为 60 ms，网络或调度异常后快速增大，稳定后逐步回落到可稳定播放的最低延迟。两种方式均保留丢包处理、流超时检测、临时故障后的 session resume、网络感知重连，以及分段收包/派发/写入诊断。
 - Android 使用 CameraX 和纯 JVM ZXing 离线扫描配对二维码，并在应用扫描结果前校验数据。
-- 移动端支持简体中文和英文，首次默认英文并记住用户选择。
+- 移动端使用独立设置页管理简体中文、英文和 Android 播放方式；首次默认英文，并记住用户选择。
 - 桌面壳支持简体中文和英文，首次默认英文并记住用户选择。
 - 桌面壳内置精简中文字体，不依赖操作系统字体配置。
 - 主窗口和托盘使用随服务状态变化的单一启停操作。
@@ -86,13 +86,13 @@ Rust native desktop shell
 - RTP packetizer。
 - Linux 原生 PipeWire 系统输出采集和预分配 SPSC 缓冲队列，`auto` 模式不可用时回退测试音。
 - macOS 原生 ScreenCaptureKit 系统音频采集，复用固定大小的 Float32 到 s16le 转换缓冲；macOS 的 `auto` 模式自动选择 ScreenCaptureKit。
-- Android 使用预分配 RTP 包池、SPSC 交接队列和固定槽乱序窗口，避免逐包分配 `ByteArray` 和复制负载。
+- Android 使用预分配 RTP 包池、SPSC 交接队列和增量清理的固定槽乱序窗口，避免逐包分配 `ByteArray`、复制负载和全窗口扫描。
 - `mobile/iosApp` iPhone App 承载共享 Compose UI；Swift 负责局域网发现、HTTP 控制、二维码扫描、池化原位 RTP 解析、10-60 ms 自适应抖动缓冲、有界回调驱动的 AVAudioEngine 播放、音频中断/路由恢复、网络感知重连和 Background Audio。
 - 48kHz stereo s16le PCM 测试音源，默认 5ms RTP 包以避免常见 MTU 下的 IP 分片。
 - UDP/RTP 媒体发送。
 - PIN 配对控制接口。
 - 带 15 秒可续租租约的单接收端占用保护：另一台手机会被拒绝，当前手机可安全重连，异常退出遗留的会话会自动过期。
-- 桌面媒体发送任务带有界退避自愈、捕获丢帧/重启诊断、目标地址缓存、发送计数批量提交和显式捕获线程回收。
+- 桌面媒体发送任务带有界退避自愈、捕获丢帧/重启诊断、目标地址缓存、原子发送计数批量提交、DSCP 音频 QoS、可选 64 包快速重传缓存和显式捕获线程回收。
 - 控制端口自动选择：桌面端默认 `4100..4199`。
 - 局域网发现端口自动选择：默认 `41000..41020`。
 - `lanpulse-discover` 局域网发现测试工具。

@@ -76,9 +76,9 @@ Implemented:
 - `mobile/shared` KMP module with one Compose UI, pairing flow, validation, localization, and playback-state controller for Android and iPhone.
 - Android platform client with LAN discovery, manual pairing, and native playback integration.
 - Android foreground media-playback service with notification controls, a partial wake lock, and a high-performance Wi-Fi lock.
-- Android UDP/RTP receiver and low-latency `AudioTrack` PCM playback with a 15 ms initial adaptive buffer, a 10-60 ms operating range, packet-loss silence, clock-drift correction, stream timeout detection, session resume after transient failures, network-aware reconnection, and live queue/jitter/underrun diagnostics.
+- Android UDP/RTP receiver and `AudioTrack` PCM playback with a dedicated audio-priority receive thread and two persisted playback modes: Immediate keeps only the current RTP packet, writes it non-blockingly into the platform's minimum output capacity, and does not wait for retransmission, correct clock drift, or rebuffer after an underrun; Adaptive starts at 120 ms, automatically operates from 40-450 ms, uses a 60 ms output target, grows quickly after network or scheduling disruption, and gradually returns toward the lowest stable delay. Both modes retain packet-loss handling, stream timeout detection, session resume after transient failures, network-aware reconnection, and segmented receive/dispatch/write diagnostics.
 - Android QR pairing scanner built with CameraX and pure-JVM ZXing; scanned data is validated before it is applied.
-- Simplified Chinese and English mobile UI; English is the default on first launch, and the selected language is persisted.
+- Simplified Chinese and English mobile UI with language and Android playback-mode choices in a dedicated settings page; English is the default on first launch, and selections are persisted.
 - Simplified Chinese and English desktop UI; English is the default on first launch, and the selected language is persisted.
 - Bundled subset Chinese font, independent of the operating system's font configuration.
 - A single start/stop action in the main window and tray that follows service state.
@@ -86,13 +86,13 @@ Implemented:
 - RTP packetizer.
 - Native Linux PipeWire system-output capture with preallocated SPSC buffer queues; `auto` falls back to a test tone if capture is unavailable.
 - Native macOS ScreenCaptureKit system-audio capture with reusable fixed-size Float32-to-s16le conversion buffers; `auto` selects ScreenCaptureKit on macOS.
-- Preallocated Android RTP packet pools, SPSC handoff queues, and a fixed-slot reorder window avoid per-packet `ByteArray` allocation and payload copies.
+- Preallocated Android RTP packet pools, SPSC handoff queues, and an incrementally pruned fixed-slot reorder window avoid per-packet `ByteArray` allocation, payload copies, and full-window scans.
 - An iPhone app in `mobile/iosApp` that hosts the shared Compose UI and uses Swift for LAN discovery, HTTP control, QR scanning, pooled in-place RTP parsing, a 10-60 ms adaptive jitter buffer, bounded callback-driven AVAudioEngine playback, interruption/route recovery, network-aware reconnection, and Background Audio.
 - 48 kHz stereo s16le PCM test source, with 5 ms RTP packets by default to avoid IP fragmentation on common MTUs.
 - UDP/RTP media transmission.
 - PIN-pairing control API.
 - Single-receiver protection with a 15-second renewable lease: another phone is rejected while the active phone can safely reconnect, and abandoned sessions expire automatically.
-- Supervised desktop media sending with bounded restart backoff, capture-drop/restart diagnostics, target caching, batched packet counters, and explicit capture-thread shutdown.
+- Supervised desktop media sending with bounded restart backoff, capture-drop/restart diagnostics, target caching, atomic batched packet counters, DSCP audio QoS, an optional 64-packet retransmit cache, and explicit capture-thread shutdown.
 - Automatic control-port selection, defaulting to `4100..4199` in the desktop app.
 - Automatic LAN discovery-port selection, defaulting to `41000..41020`.
 - `lanpulse-discover` LAN discovery test tool.

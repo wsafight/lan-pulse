@@ -1,12 +1,15 @@
 package com.lanpulse.mobile.android
 
 import com.lanpulse.mobile.AudioConfig
+import com.lanpulse.mobile.PlaybackMode
 
 internal data class ReceiverStats(
     val packetsReceived: Long,
     val packetsLost: Long,
     val bufferMs: Int,
     val queuedMs: Int,
+    val softwareQueuedMs: Int,
+    val outputQueuedMs: Int,
     val jitterMs: Double,
     val audioUnderruns: Int,
     val driftInsertedFrames: Long,
@@ -18,6 +21,12 @@ internal data class ReceiverStats(
     val latePackets: Long,
     val replacedPackets: Long,
     val prunedPackets: Long,
+    val maxReceiveGapMs: Int,
+    val maxDispatchDelayMs: Int,
+    val maxAudioWriteMs: Int,
+    val outputDroppedBytes: Long,
+    val nackRequests: Long,
+    val nackRecoveries: Long,
 )
 
 internal class InvalidAudioConfigException(message: String) : IllegalArgumentException(message)
@@ -58,23 +67,59 @@ internal fun missingPacketWaitMs(packetMs: Int, queuedFrames: Long, sampleRate: 
     return (queuedMs - reserveMs).coerceIn(packetMs.toLong(), MAX_MISSING_PACKET_WAIT_MS)
 }
 
-internal fun concealmentPacketCount(packetMs: Int, queuedFrames: Long, sampleRate: Int): Int {
-    val framesPerPacket = sampleRate.toLong() * packetMs / 1_000
+internal fun canWaitForMissingPacket(queuedFrames: Long, sampleRate: Int): Boolean {
     val reserveFrames = sampleRate.toLong() * MIN_AUDIO_QUEUE_RESERVE_MS / 1_000
-    if (queuedFrames >= reserveFrames) return 0
-    val missingFrames = reserveFrames - queuedFrames
-    return ((missingFrames + framesPerPacket - 1) / framesPerPacket).toInt()
+    return queuedFrames > reserveFrames
 }
 
 internal fun packetsForDuration(durationMs: Int, packetMs: Int): Int =
     ((durationMs + packetMs - 1) / packetMs).coerceAtLeast(MIN_TARGET_PACKETS)
+
+internal fun playbackTargetFrames(
+    targetPacketCount: Int,
+    framesPerPacket: Int,
+    outputBufferFrames: Int,
+): Long = maxOf(
+    targetPacketCount.toLong() * framesPerPacket,
+    outputBufferFrames.toLong(),
+)
 
 internal fun nextPowerOfTwo(value: Int): Int {
     require(value > 0)
     return Integer.highestOneBit(value - 1).coerceAtLeast(1) shl 1
 }
 
-internal const val MAX_BUFFER_MS = 800
+internal data class PlaybackBufferPolicy(
+    val initialBufferMs: Int,
+    val minBufferMs: Int,
+    val maxBufferMs: Int,
+    val outputBufferMs: Int,
+    val backlogMarginMs: Int,
+    val directWrite: Boolean,
+)
+
+internal fun playbackBufferPolicy(playbackMode: PlaybackMode): PlaybackBufferPolicy =
+    when (playbackMode) {
+        PlaybackMode.Immediate -> PlaybackBufferPolicy(
+            initialBufferMs = DIRECT_PACKET_BUFFER_MS,
+            minBufferMs = DIRECT_PACKET_BUFFER_MS,
+            maxBufferMs = DIRECT_PACKET_BUFFER_MS,
+            outputBufferMs = DIRECT_PACKET_BUFFER_MS,
+            backlogMarginMs = DIRECT_PACKET_BUFFER_MS,
+            directWrite = true,
+        )
+        PlaybackMode.Adaptive -> PlaybackBufferPolicy(
+            initialBufferMs = AdaptiveJitterController.INITIAL_ADAPTIVE_BUFFER_MS,
+            minBufferMs = AdaptiveJitterController.MIN_ADAPTIVE_BUFFER_MS,
+            maxBufferMs = MAX_BUFFER_MS,
+            outputBufferMs = ADAPTIVE_OUTPUT_BUFFER_MS,
+            backlogMarginMs = ADAPTIVE_BACKLOG_MARGIN_MS,
+            directWrite = false,
+        )
+    }
+
+internal const val MAX_BUFFER_MS = 450
+internal const val ADAPTIVE_OUTPUT_BUFFER_MS = 60
 internal const val STATS_UPDATE_INTERVAL_MS = 500
 internal const val UNDERRUN_CHECK_INTERVAL_MS = 100
 internal const val STREAM_TIMEOUT_MS = 3_000
@@ -85,12 +130,14 @@ internal const val UDP_RECEIVE_BUFFER_BYTES = 256 * 1024
 internal const val PCM_16_BYTES_PER_SAMPLE = 2
 internal const val STORED_PACKET_MULTIPLIER = 4
 
-private const val MIN_AUDIO_QUEUE_RESERVE_MS = 100
+private const val MIN_AUDIO_QUEUE_RESERVE_MS = 60
 private const val MAX_MISSING_PACKET_WAIT_MS = 100L
+private const val DIRECT_PACKET_BUFFER_MS = 1
+private const val ADAPTIVE_BACKLOG_MARGIN_MS = 100
 private const val UINT32_MAX = 0xFFFF_FFFFL
 private const val MIN_SAMPLE_RATE = 8_000
 private const val MAX_SAMPLE_RATE = 192_000
 private const val MAX_AUDIO_PACKET_BYTES = 64 * 1024
-private const val MIN_TARGET_PACKETS = 2
+private const val MIN_TARGET_PACKETS = 1
 private val SUPPORTED_PACKET_DURATIONS_MS = setOf(5, 10, 20)
 private val RTP_DYNAMIC_PAYLOAD_TYPES = 96..127

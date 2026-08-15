@@ -16,6 +16,8 @@ enum class DiscoveryState {
 
 data class MobileUiState(
     val language: MobileLanguage = MobileLanguage.En,
+    val playbackMode: PlaybackMode = PlaybackMode.Adaptive,
+    val supportsPlaybackMode: Boolean = false,
     val discoveryState: DiscoveryState = DiscoveryState.Idle,
     val desktops: List<DesktopEndpoint> = emptyList(),
     val selectedDesktopId: String? = null,
@@ -29,7 +31,13 @@ class LanPulseController(
     private val client: LanPulseClient,
     private val scope: CoroutineScope,
 ) {
-    private val mutableState = MutableStateFlow(MobileUiState(language = client.initialLanguage))
+    private val mutableState = MutableStateFlow(
+        MobileUiState(
+            language = client.initialLanguage,
+            playbackMode = client.initialPlaybackMode,
+            supportsPlaybackMode = client.supportsPlaybackMode,
+        ),
+    )
     private var discoveryJob: Job? = null
 
     val state: StateFlow<MobileUiState> = mutableState.asStateFlow()
@@ -121,7 +129,9 @@ class LanPulseController(
             return
         }
 
-        runCatching { client.connect(endpoint, current.pin, current.language) }
+        runCatching {
+            client.connect(endpoint, current.pin, current.language, current.playbackMode)
+        }
             .onFailure { error ->
                 mutableState.update { it.copy(error = error.message ?: strings.unableToConnect) }
             }
@@ -145,6 +155,20 @@ class LanPulseController(
     fun selectLanguage(language: MobileLanguage) {
         mutableState.update { it.copy(language = language, error = null) }
         client.saveLanguage(language)
+    }
+
+    fun selectPlaybackMode(playbackMode: PlaybackMode) {
+        if (!client.supportsPlaybackMode) return
+        val current = mutableState.value
+        if (
+            current.playback !is PlaybackState.Idle &&
+            current.playback !is PlaybackState.Failed
+        ) {
+            return
+        }
+        if (current.playbackMode == playbackMode) return
+        mutableState.update { it.copy(playbackMode = playbackMode, error = null) }
+        client.savePlaybackMode(playbackMode)
     }
 
     fun clearError() {

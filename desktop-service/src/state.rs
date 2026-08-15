@@ -23,6 +23,10 @@ pub struct SessionState {
     device: RwLock<Option<ActiveDevice>>,
     media_source: RwLock<String>,
     stats: RwLock<Stats>,
+    packets_sent: AtomicU64,
+    bytes_sent: AtomicU64,
+    media_started_ms: AtomicU64,
+    last_packet_at_ms: AtomicU64,
     lease_timeout: Duration,
 }
 
@@ -69,8 +73,6 @@ struct ActiveDevice {
 
 #[derive(Debug, Clone, Default)]
 struct Stats {
-    packets_sent: u64,
-    bytes_sent: u64,
     capture_packets_dropped: u64,
     capture_restarts: u64,
     last_capture_error: Option<String>,
@@ -78,8 +80,6 @@ struct Stats {
     last_rtp_error: Option<String>,
     media_restarts: u64,
     last_media_error: Option<String>,
-    media_started_ms: Option<u64>,
-    last_packet_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,6 +151,10 @@ impl SessionState {
             device: RwLock::new(None),
             media_source: RwLock::new("idle".to_string()),
             stats: RwLock::new(Stats::default()),
+            packets_sent: AtomicU64::new(0),
+            bytes_sent: AtomicU64::new(0),
+            media_started_ms: AtomicU64::new(0),
+            last_packet_at_ms: AtomicU64::new(0),
             lease_timeout,
         }
     }
@@ -349,23 +353,25 @@ impl SessionState {
         self.media_source.read().await.clone()
     }
 
-    pub async fn record_packet(&self, bytes: u64, elapsed: Duration) {
-        self.record_packets(1, bytes, elapsed).await;
+    pub fn record_packet(&self, bytes: u64, elapsed: Duration) {
+        self.record_packets(1, bytes, elapsed);
     }
 
-    pub async fn record_packets(&self, packets: u64, bytes: u64, elapsed: Duration) {
+    pub fn record_packets(&self, packets: u64, bytes: u64, elapsed: Duration) {
         if packets == 0 {
             return;
         }
-        let mut stats = self.stats.write().await;
-        stats.packets_sent += packets;
-        stats.bytes_sent += bytes;
+        self.packets_sent.fetch_add(packets, Ordering::Relaxed);
+        self.bytes_sent.fetch_add(bytes, Ordering::Relaxed);
 
-        let ms = elapsed.as_millis() as u64;
-        if stats.media_started_ms.is_none() {
-            stats.media_started_ms = Some(ms);
-        }
-        stats.last_packet_at_ms = Some(ms);
+        let encoded_ms = (elapsed.as_millis() as u64).saturating_add(1);
+        let _ = self.media_started_ms.compare_exchange(
+            0,
+            encoded_ms,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
+        self.last_packet_at_ms.store(encoded_ms, Ordering::Relaxed);
     }
 
     pub async fn record_capture_dropped(&self, count: u64) {
@@ -404,8 +410,8 @@ impl SessionState {
             target: self.target().await,
             device: self.device().await,
             media_source: self.media_source().await,
-            packets_sent: stats.packets_sent,
-            bytes_sent: stats.bytes_sent,
+            packets_sent: self.packets_sent.load(Ordering::Relaxed),
+            bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
             capture_packets_dropped: stats.capture_packets_dropped,
             capture_restarts: stats.capture_restarts,
             last_capture_error: stats.last_capture_error,
@@ -413,10 +419,16 @@ impl SessionState {
             last_rtp_error: stats.last_rtp_error,
             media_restarts: stats.media_restarts,
             last_media_error: stats.last_media_error,
-            media_started_ms: stats.media_started_ms,
-            last_packet_at_ms: stats.last_packet_at_ms,
+            media_started_ms: decode_optional_millis(self.media_started_ms.load(Ordering::Relaxed)),
+            last_packet_at_ms: decode_optional_millis(
+                self.last_packet_at_ms.load(Ordering::Relaxed),
+            ),
         }
     }
+}
+
+fn decode_optional_millis(encoded: u64) -> Option<u64> {
+    encoded.checked_sub(1)
 }
 
 #[cfg(test)]
@@ -690,7 +702,7 @@ mod tests {
     async fn records_packet_drop_and_media_failure_stats() {
         let state = state();
 
-        state.record_packet(128, Duration::from_millis(25)).await;
+        state.record_packet(128, Duration::from_millis(25));
         state.record_capture_dropped(3).await;
         state
             .record_capture_restart("pipewire failed".to_string())

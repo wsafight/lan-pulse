@@ -1,5 +1,6 @@
 package com.lanpulse.mobile.android
 
+import kotlin.math.abs
 import kotlin.math.max
 
 internal class ClockDriftController(private val framesPerPacket: Int) {
@@ -8,11 +9,11 @@ internal class ClockDriftController(private val framesPerPacket: Int) {
     private var consecutiveRequests = 0
 
     fun correction(queuedFrames: Long, targetFrames: Long): Int {
-        if (correctionCooldownPackets > 0) correctionCooldownPackets -= 1
         val tolerance = max(1, framesPerPacket)
+        val errorFrames = queuedFrames - targetFrames
         val requested = when {
-            queuedFrames > targetFrames + tolerance -> -1
-            queuedFrames + tolerance < targetFrames -> 1
+            errorFrames > tolerance -> -1
+            errorFrames < -tolerance -> 1
             else -> 0
         }
         if (requested == 0) {
@@ -26,6 +27,9 @@ internal class ClockDriftController(private val framesPerPacket: Int) {
         } else {
             consecutiveRequests += 1
         }
+        val correctionInterval = correctionInterval(abs(errorFrames))
+        correctionCooldownPackets = minOf(correctionCooldownPackets, correctionInterval)
+        if (correctionCooldownPackets > 0) correctionCooldownPackets -= 1
         if (
             consecutiveRequests < REQUIRED_CONSECUTIVE_REQUESTS ||
             correctionCooldownPackets > 0
@@ -33,8 +37,16 @@ internal class ClockDriftController(private val framesPerPacket: Int) {
             return 0
         }
 
-        correctionCooldownPackets = CORRECTION_INTERVAL_PACKETS
+        correctionCooldownPackets = correctionInterval
         return requested
+    }
+
+    private fun correctionInterval(errorFrames: Long): Int = when {
+        errorFrames > framesPerPacket.toLong() * FAST_CORRECTION_ERROR_PACKETS ->
+            FAST_CORRECTION_INTERVAL_PACKETS
+        errorFrames > framesPerPacket.toLong() * CATCH_UP_ERROR_PACKETS ->
+            CATCH_UP_CORRECTION_INTERVAL_PACKETS
+        else -> DRIFT_CORRECTION_INTERVAL_PACKETS
     }
 
     fun reset() {
@@ -45,6 +57,10 @@ internal class ClockDriftController(private val framesPerPacket: Int) {
 
     private companion object {
         const val REQUIRED_CONSECUTIVE_REQUESTS = 4
-        const val CORRECTION_INTERVAL_PACKETS = 40
+        const val FAST_CORRECTION_ERROR_PACKETS = 4
+        const val CATCH_UP_ERROR_PACKETS = 2
+        const val FAST_CORRECTION_INTERVAL_PACKETS = 1
+        const val CATCH_UP_CORRECTION_INTERVAL_PACKETS = 4
+        const val DRIFT_CORRECTION_INTERVAL_PACKETS = 40
     }
 }

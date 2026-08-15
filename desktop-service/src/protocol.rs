@@ -6,6 +6,7 @@ pub const CAPABILITY_RTP_UNICAST: &str = "rtp-unicast";
 pub const CAPABILITY_SESSION_ID: &str = "session-id";
 pub const CAPABILITY_CLIENT_ID: &str = "client-id";
 pub const CAPABILITY_LEASE_HEARTBEAT: &str = "lease-heartbeat";
+pub const CAPABILITY_RTP_NACK_V1: &str = "rtp-nack-v1";
 
 pub fn capabilities() -> Vec<String> {
     vec![
@@ -14,6 +15,7 @@ pub fn capabilities() -> Vec<String> {
         CAPABILITY_SESSION_ID.to_string(),
         CAPABILITY_CLIENT_ID.to_string(),
         CAPABILITY_LEASE_HEARTBEAT.to_string(),
+        CAPABILITY_RTP_NACK_V1.to_string(),
     ]
 }
 
@@ -25,8 +27,8 @@ pub fn versions_are_compatible(peer_version: u16, peer_min_supported_version: u1
 mod tests {
     use super::{
         CAPABILITY_CLIENT_ID, CAPABILITY_LEASE_HEARTBEAT, CAPABILITY_PCM_S16LE,
-        CAPABILITY_RTP_UNICAST, CAPABILITY_SESSION_ID, MIN_SUPPORTED_PROTOCOL_VERSION,
-        PROTOCOL_VERSION, capabilities, versions_are_compatible,
+        CAPABILITY_RTP_NACK_V1, CAPABILITY_RTP_UNICAST, CAPABILITY_SESSION_ID,
+        MIN_SUPPORTED_PROTOCOL_VERSION, PROTOCOL_VERSION, capabilities, versions_are_compatible,
     };
 
     #[test]
@@ -39,6 +41,7 @@ mod tests {
                 CAPABILITY_SESSION_ID.to_string(),
                 CAPABILITY_CLIENT_ID.to_string(),
                 CAPABILITY_LEASE_HEARTBEAT.to_string(),
+                CAPABILITY_RTP_NACK_V1.to_string(),
             ]
         );
     }

@@ -35,12 +35,32 @@ class AndroidAudioConfigTest {
 
     @Test
     fun sizingHelpersRoundUpAndApplyMinimums() {
-        assertEquals(2, packetsForDuration(durationMs = 1, packetMs = 5))
+        assertEquals(1, packetsForDuration(durationMs = 1, packetMs = 5))
         assertEquals(3, packetsForDuration(durationMs = 11, packetMs = 5))
         assertEquals(2, nextPowerOfTwo(1))
         assertEquals(8, nextPowerOfTwo(5))
         assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 0, sampleRate = 48_000))
         assertEquals(20, missingPacketWaitMs(packetMs = 20, queuedFrames = 0, sampleRate = 48_000))
+    }
+
+    @Test
+    fun playbackTargetNeverFallsBelowAudioTrackCapacity() {
+        assertEquals(
+            5_760L,
+            playbackTargetFrames(
+                targetPacketCount = 24,
+                framesPerPacket = 240,
+                outputBufferFrames = 3_844,
+            ),
+        )
+        assertEquals(
+            3_844L,
+            playbackTargetFrames(
+                targetPacketCount = 10,
+                framesPerPacket = 240,
+                outputBufferFrames = 3_844,
+            ),
+        )
     }
 
     @Test

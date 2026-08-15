@@ -89,7 +89,12 @@ private class IosLanPulseClient(
         }
     }
 
-    override fun connect(endpoint: DesktopEndpoint, pin: String, language: MobileLanguage) {
+    override fun connect(
+        endpoint: DesktopEndpoint,
+        pin: String,
+        language: MobileLanguage,
+        playbackMode: PlaybackMode,
+    ) {
         currentLanguage = language
         backend.connect(endpoint.toIos(), pin, language.code)
     }

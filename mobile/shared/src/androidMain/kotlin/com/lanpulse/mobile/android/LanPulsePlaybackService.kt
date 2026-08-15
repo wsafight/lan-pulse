@@ -31,6 +31,8 @@ import android.os.Process
 import android.os.SystemClock
 import com.lanpulse.mobile.MobileLanguage
 import com.lanpulse.mobile.MobileStrings
+import com.lanpulse.mobile.LANPULSE_CAPABILITY_RTP_NACK_V1
+import com.lanpulse.mobile.PlaybackMode
 import com.lanpulse.mobile.PlaybackState as LanPulsePlaybackState
 import java.net.DatagramSocket
 import java.util.concurrent.Executors
@@ -57,7 +59,7 @@ class LanPulsePlaybackService : Service() {
     private val audioDispatcher = Executors.newSingleThreadExecutor { command ->
         Thread(
             {
-                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
                 command.run()
             },
             "LanPulseAudio",
@@ -147,7 +149,8 @@ class LanPulsePlaybackService : Service() {
     private suspend fun replaceSession(session: PlaybackSession) = commandMutex.withLock {
         AndroidDiagnosticLog.event(
             "session_replacing",
-            "desktop=${session.desktopName} control_url=${session.controlUrl}",
+            "desktop=${session.desktopName} control_url=${session.controlUrl} " +
+                "playback_mode=${session.playbackMode.storageValue}",
         )
         playbackJob?.cancelAndJoin()
 
@@ -313,6 +316,7 @@ class LanPulsePlaybackService : Service() {
                     RtpAudioReceiver(
                         socket = socket,
                         audio = media.audio,
+                        playbackMode = session.playbackMode,
                         onStats = { stats ->
                             updatePlaybackState(
                                 LanPulsePlaybackState.Playing(
@@ -347,6 +351,8 @@ class LanPulsePlaybackService : Service() {
                         onDiagnostic = { message ->
                             AndroidDiagnosticLog.event("rtp_event", message)
                         },
+                        enableNack = session.playbackMode == PlaybackMode.Adaptive &&
+                            LANPULSE_CAPABILITY_RTP_NACK_V1 in response.capabilities,
                     ).play()
                 } finally {
                     heartbeatJob.cancelAndJoin()
@@ -813,7 +819,8 @@ class LanPulsePlaybackService : Service() {
         val pin = getStringExtra(EXTRA_PIN)?.takeIf(String::isNotBlank) ?: return null
         val clientId = getStringExtra(EXTRA_CLIENT_ID)?.takeIf(String::isNotBlank) ?: return null
         val language = MobileLanguage.fromCode(getStringExtra(EXTRA_LANGUAGE))
-        return PlaybackSession(desktopName, controlUrl, pin, clientId, language)
+        val playbackMode = PlaybackMode.fromStorageValue(getStringExtra(EXTRA_PLAYBACK_MODE))
+        return PlaybackSession(desktopName, controlUrl, pin, clientId, language, playbackMode)
     }
 
     private data class PlaybackSession(
@@ -822,6 +829,7 @@ class LanPulsePlaybackService : Service() {
         val pin: String,
         val clientId: String,
         val language: MobileLanguage,
+        val playbackMode: PlaybackMode,
     ) {
         val strings: MobileStrings = language.strings()
     }
@@ -834,6 +842,7 @@ class LanPulsePlaybackService : Service() {
         const val EXTRA_PIN = "pin"
         const val EXTRA_CLIENT_ID = "client_id"
         const val EXTRA_LANGUAGE = "language"
+        const val EXTRA_PLAYBACK_MODE = "playback_mode"
 
         private const val HEARTBEAT_INTERVAL_MS = 3_000L
         private const val DIAGNOSTIC_STATS_INTERVAL_MS = 2_000L
@@ -847,9 +856,14 @@ class LanPulsePlaybackService : Service() {
 }
 
 private fun ReceiverStats.diagnosticSummary(): String =
-    "received=$packetsReceived lost=$packetsLost buffer_ms=$bufferMs queued_ms=$queuedMs " +
+        "received=$packetsReceived lost=$packetsLost buffer_ms=$bufferMs queued_ms=$queuedMs " +
+        "software_queued_ms=$softwareQueuedMs output_queued_ms=$outputQueuedMs " +
         "jitter_ms=${"%.2f".format(java.util.Locale.US, jitterMs)} underruns=$audioUnderruns " +
         "drift_inserted=$driftInsertedFrames drift_dropped=$driftDroppedFrames " +
         "invalid=$invalidPackets queue_overflows=$receiveQueueOverflows " +
         "pool_exhausted=$packetPoolExhausted duplicates=$duplicatePackets late=$latePackets " +
-        "replaced=$replacedPackets pruned=$prunedPackets"
+        "replaced=$replacedPackets pruned=$prunedPackets " +
+        "max_receive_gap_ms=$maxReceiveGapMs max_dispatch_delay_ms=$maxDispatchDelayMs " +
+        "max_audio_write_ms=$maxAudioWriteMs output_dropped_bytes=$outputDroppedBytes " +
+        "nack_requests=$nackRequests " +
+        "nack_recoveries=$nackRecoveries"
