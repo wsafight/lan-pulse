@@ -7,6 +7,7 @@ import com.lanpulse.mobile.AudioConfig
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -29,6 +30,9 @@ internal class RtpAudioReceiver(
         val poolSize = PACKET_QUEUE_CAPACITY + jitterSlots + PACKET_POOL_HEADROOM
         val freePackets = SpscRing<RtpPacketBuffer>(nextPowerOfTwo(poolSize))
         val readyPackets = SpscRing<RtpPacketBuffer>(PACKET_QUEUE_CAPACITY)
+        val invalidPackets = AtomicLong(0)
+        val receiveQueueOverflows = AtomicLong(0)
+        val packetPoolExhausted = AtomicLong(0)
         repeat(poolSize) {
             check(freePackets.offer(RtpPacketBuffer(packetBufferBytes)))
         }
@@ -46,7 +50,10 @@ internal class RtpAudioReceiver(
                 val receiveBytes = packet?.bytes ?: discardBytes
                 datagram.setData(receiveBytes, 0, receiveBytes.size)
                 socket.receive(datagram)
-                if (packet == null) continue
+                if (packet == null) {
+                    packetPoolExhausted.incrementAndGet()
+                    continue
+                }
 
                 packet.arrivalNanos = System.nanoTime()
                 val valid = packet.parseInPlace(
@@ -58,6 +65,11 @@ internal class RtpAudioReceiver(
                     reusable = null
                     packetSignal.trySend(Unit)
                 } else {
+                    if (valid) {
+                        receiveQueueOverflows.incrementAndGet()
+                    } else {
+                        invalidPackets.incrementAndGet()
+                    }
                     reusable = packet
                 }
             }
@@ -83,6 +95,8 @@ internal class RtpAudioReceiver(
         var packetsSinceStats = 0
         var observedUnderruns = track.underrunCount
         var packetsSinceUnderrunCheck = 0
+        var driftInsertedFrames = 0L
+        var driftDroppedFrames = 0L
 
         fun recycle(packet: RtpPacketBuffer) {
             check(freePackets.offer(packet))
@@ -123,6 +137,11 @@ internal class RtpAudioReceiver(
                 writeFully(bytes, offset, length)
                 playbackClock.recordWritten(length / bytesPerFrame)
             } else {
+                if (correction > 0) {
+                    driftInsertedFrames += 1
+                } else {
+                    driftDroppedFrames += 1
+                }
                 val adjustedLength = frameAdjuster.adjust(bytes, offset, length, correction)
                 writeFully(frameAdjuster.output, 0, adjustedLength)
                 playbackClock.recordWritten(adjustedLength / bytesPerFrame)
@@ -131,11 +150,24 @@ internal class RtpAudioReceiver(
 
         try {
             fun publishStats() {
+                val queuedFrames = playbackClock.queuedFrames(track.playbackHeadPosition)
                 onStats(
                     ReceiverStats(
                         packetsReceived = received,
                         packetsLost = lost,
                         bufferMs = adaptiveBuffer.targetPacketCount * audio.packetMs,
+                        queuedMs = (queuedFrames * 1_000 / audio.sampleRate).toInt(),
+                        jitterMs = adaptiveBuffer.jitterMs,
+                        audioUnderruns = track.underrunCount,
+                        driftInsertedFrames = driftInsertedFrames,
+                        driftDroppedFrames = driftDroppedFrames,
+                        invalidPackets = invalidPackets.get(),
+                        receiveQueueOverflows = receiveQueueOverflows.get(),
+                        packetPoolExhausted = packetPoolExhausted.get(),
+                        duplicatePackets = jitterBuffer.duplicatePackets,
+                        latePackets = jitterBuffer.latePackets,
+                        replacedPackets = jitterBuffer.replacedPackets,
+                        prunedPackets = jitterBuffer.prunedPackets,
                     ),
                 )
                 packetsSinceStats = 0

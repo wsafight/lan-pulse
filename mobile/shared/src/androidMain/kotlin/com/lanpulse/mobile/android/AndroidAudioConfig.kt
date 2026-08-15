@@ -6,6 +6,18 @@ internal data class ReceiverStats(
     val packetsReceived: Long,
     val packetsLost: Long,
     val bufferMs: Int,
+    val queuedMs: Int,
+    val jitterMs: Double,
+    val audioUnderruns: Int,
+    val driftInsertedFrames: Long,
+    val driftDroppedFrames: Long,
+    val invalidPackets: Long,
+    val receiveQueueOverflows: Long,
+    val packetPoolExhausted: Long,
+    val duplicatePackets: Long,
+    val latePackets: Long,
+    val replacedPackets: Long,
+    val prunedPackets: Long,
 )
 
 internal class InvalidAudioConfigException(message: String) : IllegalArgumentException(message)

@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, State},
@@ -73,6 +73,36 @@ async fn connect(
             .into_response();
     }
 
+    let target = SocketAddr::new(remote.ip(), request.udp_port);
+    let client_id = request
+        .client_id
+        .clone()
+        .unwrap_or_else(|| format!("legacy:{}", remote.ip()));
+    let device_name = request
+        .device_name
+        .clone()
+        .unwrap_or_else(|| "device".to_string());
+    if let Some(session_id) = request.session_id.as_deref().filter(|id| !id.is_empty())
+        && state
+            .resume_device(&client_id, session_id, device_name.clone(), target)
+            .await
+    {
+        let response = ConnectResponse {
+            ok: true,
+            message: format!("resumed {}", device_name),
+            session_id: Some(session_id.to_string()),
+            protocol_version: PROTOCOL_VERSION,
+            min_supported_protocol_version: MIN_SUPPORTED_PROTOCOL_VERSION,
+            capabilities: capabilities(),
+            media: Some(MediaConfig {
+                target_ip: remote.ip().to_string(),
+                target_port: request.udp_port,
+                audio: state.audio_config().clone(),
+            }),
+        };
+        return (StatusCode::OK, Json(response)).into_response();
+    }
+
     match state.authorize_pairing_pin(&request.pin).await {
         PairingPinResult::Accepted => {}
         PairingPinResult::Invalid => {
@@ -94,12 +124,17 @@ async fn connect(
         }
     }
 
-    let target = SocketAddr::new(remote.ip(), request.udp_port);
-    let client_id = request
-        .client_id
-        .unwrap_or_else(|| format!("legacy:{}", remote.ip()));
-    let session_id = next_session_id();
-    let device_name = request.device_name.unwrap_or_else(|| "device".to_string());
+    let session_id = match next_session_id() {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            tracing::error!(%error, "failed to create session id");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ConnectResponse::temporary_failure()),
+            )
+                .into_response();
+        }
+    };
     let device = ConnectedDevice::new(client_id, session_id.clone(), device_name.clone(), target);
     if !state.connect_device(device).await {
         return (StatusCode::CONFLICT, Json(ConnectResponse::device_busy())).into_response();
@@ -159,6 +194,7 @@ struct ConnectRequest {
     udp_port: u16,
     client_id: Option<String>,
     device_name: Option<String>,
+    session_id: Option<String>,
     protocol_version: Option<u16>,
     min_supported_protocol_version: Option<u16>,
     #[serde(default)]
@@ -280,12 +316,40 @@ impl ConnectResponse {
             media: None,
         }
     }
+
+    fn temporary_failure() -> Self {
+        Self {
+            ok: false,
+            message: "temporary desktop failure".to_string(),
+            session_id: None,
+            protocol_version: PROTOCOL_VERSION,
+            min_supported_protocol_version: MIN_SUPPORTED_PROTOCOL_VERSION,
+            capabilities: capabilities(),
+            media: None,
+        }
+    }
 }
 
-fn next_session_id() -> String {
+fn next_session_id() -> Result<String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(|error| anyhow!("generate session id: {error}"))?;
     static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
     let sequence = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-    format!("{:08x}-{sequence:016x}", std::process::id())
+    let sequence_bytes = sequence.to_be_bytes();
+    for (index, byte) in sequence_bytes.iter().enumerate() {
+        bytes[8 + index] ^= byte;
+    }
+    Ok(hex_encode(&bytes))
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
 }
 
 #[cfg(test)]
@@ -298,9 +362,10 @@ mod tests {
 
     use axum::{
         Json,
+        body::to_bytes,
         extract::{ConnectInfo, State},
         http::StatusCode,
-        response::IntoResponse,
+        response::{IntoResponse, Response},
     };
 
     use super::{
@@ -336,10 +401,18 @@ mod tests {
             udp_port: 5504,
             client_id: Some("phone-a".to_string()),
             device_name: Some("Phone".to_string()),
+            session_id: None,
             protocol_version: Some(1),
             min_supported_protocol_version: Some(1),
             capabilities: vec!["rtp-unicast".to_string()],
         }
+    }
+
+    async fn response_json(response: Response) -> serde_json::Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should be readable");
+        serde_json::from_slice(&bytes).expect("response body should be JSON")
     }
 
     #[tokio::test]
@@ -416,6 +489,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connect_resumes_active_session_after_pairing_pin_expires() {
+        let state = Arc::new(SessionState::new_for_tests(
+            "123456".to_string(),
+            state().audio_config().clone(),
+            Duration::from_secs(15),
+            Duration::from_millis(10),
+            5,
+            Duration::from_secs(1),
+        ));
+        let initial = connect(
+            State(Arc::clone(&state)),
+            ConnectInfo(remote()),
+            Json(connect_request("123456")),
+        )
+        .await
+        .into_response();
+        assert_eq!(initial.status(), StatusCode::OK);
+        let session_id = response_json(initial)
+            .await
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .expect("connect should return a session id")
+            .to_string();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let mut request = connect_request("123456");
+        request.udp_port = 5505;
+        request.session_id = Some(session_id.clone());
+        let resumed = connect(
+            State(Arc::clone(&state)),
+            ConnectInfo(remote()),
+            Json(request),
+        )
+        .await
+        .into_response();
+
+        assert_eq!(resumed.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(resumed).await["session_id"].as_str(),
+            Some(session_id.as_str())
+        );
+        assert_eq!(
+            state.target().await,
+            Some(SocketAddr::new(remote().ip(), 5505))
+        );
+    }
+
+    #[tokio::test]
     async fn connect_rate_limits_repeated_bad_pairing_pins() {
         let state = Arc::new(SessionState::new_for_tests(
             "123456".to_string(),
@@ -465,6 +586,7 @@ mod tests {
                 udp_port: 5504,
                 client_id: Some("phone-a".to_string()),
                 device_name: Some("Phone".to_string()),
+                session_id: None,
                 protocol_version: Some(1),
                 min_supported_protocol_version: Some(2),
                 capabilities: Vec::new(),
@@ -500,6 +622,7 @@ mod tests {
                 udp_port: 5504,
                 client_id: None,
                 device_name: None,
+                session_id: None,
                 protocol_version: None,
                 min_supported_protocol_version: None,
                 capabilities: Vec::new(),
@@ -533,6 +656,7 @@ mod tests {
                 udp_port: 5505,
                 client_id: Some("phone-b".to_string()),
                 device_name: Some("Phone B".to_string()),
+                session_id: None,
                 protocol_version: Some(1),
                 min_supported_protocol_version: Some(1),
                 capabilities: Vec::new(),
@@ -670,13 +794,14 @@ mod tests {
     }
 
     #[test]
-    fn session_ids_are_unique_and_process_scoped() {
-        let first = next_session_id();
-        let second = next_session_id();
-        let prefix = format!("{:08x}-", std::process::id());
+    fn session_ids_are_unique_random_hex_values() {
+        let first = next_session_id().unwrap();
+        let second = next_session_id().unwrap();
 
         assert_ne!(first, second);
-        assert!(first.starts_with(&prefix));
-        assert!(second.starts_with(&prefix));
+        assert_eq!(first.len(), 32);
+        assert_eq!(second.len(), 32);
+        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert!(second.chars().all(|ch| ch.is_ascii_hexdigit()));
     }
 }

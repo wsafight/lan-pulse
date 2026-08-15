@@ -16,6 +16,8 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.session.MediaSession
 import android.media.session.PlaybackState as MediaPlaybackState
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
@@ -41,8 +43,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 class LanPulsePlaybackService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -62,15 +66,19 @@ class LanPulsePlaybackService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var audioManager: AudioManager? = null
+    private var connectivityManager: ConnectivityManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
     private var outputDeviceCallback: AudioDeviceCallback? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var mediaSession: MediaSession? = null
     private var lastNotificationContent: String? = null
+    private val networkSignal = Channel<Unit>(Channel.CONFLATED)
 
     override fun onCreate() {
         super.onCreate()
         notificationLanguage = AndroidLanguageStore.load(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         mediaSession = createMediaSession()
         createNotificationChannel()
     }
@@ -103,6 +111,7 @@ class LanPulsePlaybackService : Service() {
         releasePlaybackResources()
         mediaSession?.release()
         mediaSession = null
+        networkSignal.close()
         serviceScope.cancel()
         audioDispatcher.close()
         super.onDestroy()
@@ -123,20 +132,27 @@ class LanPulsePlaybackService : Service() {
     private suspend fun runPlaybackLoop(session: PlaybackSession) {
         val strings = session.strings
         var lastFailure = strings.connectionLost
+        var reconnectSessionId: String? = null
         try {
             while (currentCoroutineContext().isActive) {
                 try {
-                    playOnce(session)
+                    playOnce(session, reconnectSessionId) { sessionId ->
+                        reconnectSessionId = sessionId
+                    }
                     lastFailure = strings.audioStreamEnded
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: ControlFailure) {
                     lastFailure = playbackFailureMessage(error.message, strings)
                     if (!error.retryable) {
+                        disconnectRegisteredSession(session, reconnectSessionId)
+                        reconnectSessionId = null
                         failAndStop(lastFailure)
                         return
                     }
                 } catch (_: InvalidAudioConfigException) {
+                    disconnectRegisteredSession(session, reconnectSessionId)
+                    reconnectSessionId = null
                     failAndStop(strings.incompatibleAudioFormat)
                     return
                 } catch (error: Exception) {
@@ -146,8 +162,11 @@ class LanPulsePlaybackService : Service() {
                 updatePlaybackState(
                     LanPulsePlaybackState.Reconnecting(session.desktopName, lastFailure),
                 )
-                updateNotification(session.desktopName, strings.reconnectingInThreeSeconds)
-                delay(RECONNECT_DELAY_MS)
+                updateNotification(
+                    session.desktopName,
+                    reconnectStatusMessage(isNetworkAvailable(), strings),
+                )
+                waitBeforeReconnect()
                 updatePlaybackState(LanPulsePlaybackState.Connecting(session.desktopName))
                 updateNotification(session.desktopName, strings.connecting)
             }
@@ -158,9 +177,26 @@ class LanPulsePlaybackService : Service() {
         }
     }
 
-    private suspend fun playOnce(session: PlaybackSession) {
+    private suspend fun waitBeforeReconnect() {
+        if (isNetworkAvailable()) {
+            delay(RECONNECT_DELAY_MS)
+            return
+        }
+        while (currentCoroutineContext().isActive && !isNetworkAvailable()) {
+            withTimeoutOrNull(RECONNECT_DELAY_MS) {
+                networkSignal.receive()
+            }
+        }
+    }
+
+    private suspend fun playOnce(
+        session: PlaybackSession,
+        resumeSessionId: String?,
+        onSessionConnected: (String) -> Unit,
+    ) {
         val socket = DatagramSocket(0)
         var registeredSessionId: String? = null
+        var disconnectOnExit = true
         try {
             val response = ControlClient.connect(
                 controlUrl = session.controlUrl,
@@ -168,22 +204,25 @@ class LanPulsePlaybackService : Service() {
                 udpPort = socket.localPort,
                 clientId = session.clientId,
                 deviceName = deviceName(session.strings),
+                sessionId = resumeSessionId,
             )
             if (!response.ok) {
                 throw ControlFailure(response.message.ifBlank { "Pairing was rejected" }, false)
             }
+            registeredSessionId = response.sessionId ?: resumeSessionId
+            registeredSessionId?.let(onSessionConnected)
             val media = response.media
                 ?: throw ControlFailure("Desktop did not provide audio settings", true)
-            registeredSessionId = response.sessionId
             coroutineScope {
                 val heartbeatJob = launch(Dispatchers.IO) {
+                    val heartbeatSessionId = registeredSessionId ?: return@launch
                     while (isActive) {
                         delay(HEARTBEAT_INTERVAL_MS)
                         runCatching {
                             ControlClient.heartbeat(
                                 session.controlUrl,
                                 session.pin,
-                                response.sessionId ?: return@launch,
+                                heartbeatSessionId,
                             )
                         }
                     }
@@ -196,6 +235,18 @@ class LanPulsePlaybackService : Service() {
                                 packetsReceived = stats.packetsReceived,
                                 packetsLost = stats.packetsLost,
                                 bufferMs = stats.bufferMs,
+                                queuedMs = stats.queuedMs,
+                                jitterMs = stats.jitterMs,
+                                audioUnderruns = stats.audioUnderruns,
+                                driftInsertedFrames = stats.driftInsertedFrames,
+                                driftDroppedFrames = stats.driftDroppedFrames,
+                                invalidPackets = stats.invalidPackets,
+                                receiveQueueOverflows = stats.receiveQueueOverflows,
+                                packetPoolExhausted = stats.packetPoolExhausted,
+                                duplicatePackets = stats.duplicatePackets,
+                                latePackets = stats.latePackets,
+                                replacedPackets = stats.replacedPackets,
+                                prunedPackets = stats.prunedPackets,
                             ),
                         )
                         updateNotification(
@@ -207,17 +258,27 @@ class LanPulsePlaybackService : Service() {
                     heartbeatJob.cancelAndJoin()
                 }
             }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            disconnectOnExit = false
+            throw error
         } finally {
             socket.close()
-            if (registeredSessionId != null) {
-                runCatching {
-                    ControlClient.disconnect(
-                        session.controlUrl,
-                        session.pin,
-                        registeredSessionId,
-                    )
-                }
+            if (disconnectOnExit) {
+                disconnectRegisteredSession(session, registeredSessionId)
             }
+        }
+    }
+
+    private fun disconnectRegisteredSession(session: PlaybackSession, sessionId: String?) {
+        if (sessionId == null) return
+        runCatching {
+            ControlClient.disconnect(
+                session.controlUrl,
+                session.pin,
+                sessionId,
+            )
         }
     }
 
@@ -383,6 +444,7 @@ class LanPulsePlaybackService : Service() {
     private fun acquirePlaybackResources() {
         mediaSession?.isActive = true
         registerOutputDeviceCallback()
+        registerNetworkCallback()
         if (wakeLock?.isHeld != true) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
@@ -412,6 +474,7 @@ class LanPulsePlaybackService : Service() {
         wifiLock?.let { if (it.isHeld) it.release() }
         wifiLock = null
         unregisterOutputDeviceCallback()
+        unregisterNetworkCallback()
         abandonPlaybackFocus()
         mediaSession?.isActive = false
         lastNotificationContent = null
@@ -436,6 +499,32 @@ class LanPulsePlaybackService : Service() {
         outputDeviceCallback = null
         audioManager?.unregisterAudioDeviceCallback(callback)
     }
+
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        val manager = connectivityManager ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                networkSignal.trySend(Unit)
+            }
+
+            override fun onLost(network: Network) {
+                networkSignal.trySend(Unit)
+            }
+        }
+        networkCallback = callback
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+            .onFailure { networkCallback = null }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        runCatching { connectivityManager?.unregisterNetworkCallback(callback) }
+    }
+
+    private fun isNetworkAvailable(): Boolean =
+        connectivityManager?.activeNetwork != null
 
     private fun deviceName(strings: MobileStrings): String = listOf(Build.MANUFACTURER, Build.MODEL)
         .filter(String::isNotBlank)

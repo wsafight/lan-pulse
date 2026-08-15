@@ -91,4 +91,12 @@ class AndroidPlaybackLifecycleTest {
         )
         assertEquals(strings.desktopUnreachable, playbackFailureMessage("other", strings))
     }
+
+    @Test
+    fun selectsReconnectStatusFromNetworkAvailability() {
+        val strings = MobileLanguage.En.strings()
+
+        assertEquals(strings.reconnectingInThreeSeconds, reconnectStatusMessage(true, strings))
+        assertEquals(strings.waitingForNetwork, reconnectStatusMessage(false, strings))
+    }
 }

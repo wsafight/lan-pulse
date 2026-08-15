@@ -16,6 +16,15 @@ internal class RtpJitterBuffer(
     private var latestSequence: Int? = null
     private var consecutiveLatePackets = 0
 
+    var duplicatePackets: Long = 0
+        private set
+    var latePackets: Long = 0
+        private set
+    var replacedPackets: Long = 0
+        private set
+    var prunedPackets: Long = 0
+        private set
+
     var targetPacketCount: Int = targetPacketCount
         private set
 
@@ -32,6 +41,7 @@ internal class RtpJitterBuffer(
         val expected = expectedSequence
         if (expected != null && forwardDistance(expected, packet.sequence) >= HALF_SEQUENCE_RANGE) {
             consecutiveLatePackets += 1
+            latePackets += 1
         } else {
             consecutiveLatePackets = 0
         }
@@ -44,11 +54,13 @@ internal class RtpJitterBuffer(
         val existing = slots[slot]
         if (existing != null) {
             if (existing.sequence == packet.sequence) {
+                duplicatePackets += 1
                 recycle(packet)
                 return
             }
             slots[slot] = null
             pendingCount -= 1
+            replacedPackets += 1
             recycle(existing)
         }
         slots[slot] = packet
@@ -127,6 +139,7 @@ internal class RtpJitterBuffer(
             if (forwardDistance(expected, packet.sequence) >= HALF_SEQUENCE_RANGE) {
                 slots[slot] = null
                 pendingCount -= 1
+                prunedPackets += 1
                 recycle(packet)
             }
         }
@@ -141,6 +154,7 @@ internal class RtpJitterBuffer(
             if (age < HALF_SEQUENCE_RANGE && age > maximumAge) {
                 slots[slot] = null
                 pendingCount -= 1
+                prunedPackets += 1
                 recycle(packet)
             }
         }

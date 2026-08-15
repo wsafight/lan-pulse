@@ -29,3 +29,10 @@ internal fun playbackFailureMessage(errorMessage: String?, strings: MobileString
         CONTROL_ERROR_TOO_MANY_PAIRING_ATTEMPTS -> strings.tooManyPairingAttempts
         else -> strings.desktopUnreachable
     }
+
+internal fun reconnectStatusMessage(networkAvailable: Boolean, strings: MobileStrings): String =
+    if (networkAvailable) {
+        strings.reconnectingInThreeSeconds
+    } else {
+        strings.waitingForNetwork
+    }

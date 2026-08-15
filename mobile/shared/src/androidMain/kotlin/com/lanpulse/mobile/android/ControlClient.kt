@@ -28,8 +28,9 @@ internal object ControlClient {
         udpPort: Int,
         clientId: String,
         deviceName: String,
+        sessionId: String? = null,
     ): ConnectResponse {
-        val request = ConnectRequest(pin, udpPort, clientId, deviceName)
+        val request = ConnectRequest(pin, udpPort, clientId, deviceName, sessionId)
         val body = post(controlUrl, "/api/connect", lanPulseJson.encodeToString(request))
         val response = runCatching { lanPulseJson.decodeFromString<ConnectResponse>(body) }
             .getOrElse { throw ControlFailure("Invalid response from desktop", retryable = true) }

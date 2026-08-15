@@ -22,6 +22,7 @@ class ProtocolTest {
                     udpPort = 5504,
                     clientId = "android-installation-1",
                     deviceName = "Phone",
+                    sessionId = "session-2",
                 ),
             ),
         ).jsonObject
@@ -32,6 +33,7 @@ class ProtocolTest {
             connectPayload.getValue("client_id").jsonPrimitive.content,
         )
         assertEquals("Phone", connectPayload.getValue("device_name").jsonPrimitive.content)
+        assertEquals("session-2", connectPayload.getValue("session_id").jsonPrimitive.content)
         assertEquals(1, connectPayload.getValue("protocol_version").jsonPrimitive.int)
         assertEquals(
             1,

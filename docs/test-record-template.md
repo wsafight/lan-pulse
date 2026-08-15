@@ -39,6 +39,7 @@ Use one file per device pair, network, and build. Do not record PINs, device key
 | Lock-screen playback | 30 min | Media state remains correct |  |  |
 | 1% loss | 10 min | Playback continues without reconnect loop |  |  |
 | 500 ms pause | 5 runs | Recovers within 1 s after network returns |  |  |
+| Wi-Fi off/on | 5 runs | Shows waiting-for-network, then reconnects without requiring a new PIN |  |  |
 | Explicit disconnect | 5 runs | Does not auto-reconnect or auto-play |  |  |
 
 ## Measurements
@@ -48,11 +49,14 @@ Use one file per device pair, network, and build. Do not record PINs, device key
 - Actual queue depth P50 / P95 / P99:
 - Packets received:
 - Packets lost:
+- Invalid RTP packets:
 - Late packets:
 - Out-of-order packets:
 - Duplicate packets:
+- Replaced / pruned packets:
 - Silent packets inserted:
-- Queue drops:
+- Receive queue overflows:
+- Packet pool exhaustion:
 - AudioTrack underruns:
 - Drift insertions:
 - Drift drops:

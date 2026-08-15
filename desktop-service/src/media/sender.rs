@@ -34,15 +34,33 @@ pub async fn run_media_sender(
     let mut packet = Vec::with_capacity(RTP_HEADER_LEN + packet_bytes(&audio));
     let mut capture: Option<CaptureWorker> = None;
     let mut media_running = false;
+    let mut cached_target = None;
+    let mut observed_target_generation = u64::MAX;
+    let mut pending_stats_packets = 0_u64;
+    let mut pending_stats_bytes = 0_u64;
+    let mut last_stats_flush = Instant::now();
 
     let started = Instant::now();
 
     loop {
-        let Some(target) = state.target().await else {
+        let target_generation = state.target_generation();
+        if target_generation != observed_target_generation {
+            cached_target = state.target().await;
+            observed_target_generation = target_generation;
+        }
+
+        let Some(target) = cached_target else {
             if let Some(worker) = capture.take() {
                 worker.shutdown().await;
                 state.set_media_source("idle").await;
             }
+            flush_packet_stats(
+                &state,
+                &mut pending_stats_packets,
+                &mut pending_stats_bytes,
+                started,
+            )
+            .await;
             tokio::time::sleep(Duration::from_millis(audio.packet_ms as u64)).await;
             continue;
         };
@@ -78,6 +96,13 @@ pub async fn run_media_sender(
                 if let Some(worker) = capture.take() {
                     worker.shutdown().await;
                 }
+                flush_packet_stats(
+                    &state,
+                    &mut pending_stats_packets,
+                    &mut pending_stats_bytes,
+                    started,
+                )
+                .await;
                 return Err(err);
             }
         };
@@ -92,6 +117,13 @@ pub async fn run_media_sender(
             .expect("capture worker must exist")
             .recycle(payload);
         if let Err(error) = send_result {
+            flush_packet_stats(
+                &state,
+                &mut pending_stats_packets,
+                &mut pending_stats_bytes,
+                started,
+            )
+            .await;
             state.record_rtp_send_error(error.to_string()).await;
             if let Some(worker) = capture.take() {
                 worker.shutdown().await;
@@ -104,11 +136,38 @@ pub async fn run_media_sender(
             media_running = true;
         }
 
-        state
-            .record_packet(packet.len() as u64, started.elapsed())
+        pending_stats_packets += 1;
+        pending_stats_bytes += packet.len() as u64;
+        if last_stats_flush.elapsed() >= STATS_FLUSH_INTERVAL {
+            flush_packet_stats(
+                &state,
+                &mut pending_stats_packets,
+                &mut pending_stats_bytes,
+                started,
+            )
             .await;
+            last_stats_flush = Instant::now();
+        }
     }
 }
+
+async fn flush_packet_stats(
+    state: &Arc<SessionState>,
+    packets: &mut u64,
+    bytes: &mut u64,
+    started: Instant,
+) {
+    if *packets == 0 {
+        return;
+    }
+    state
+        .record_packets(*packets, *bytes, started.elapsed())
+        .await;
+    *packets = 0;
+    *bytes = 0;
+}
+
+const STATS_FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 
 #[cfg(test)]
 mod tests {

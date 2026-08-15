@@ -81,6 +81,7 @@ data class ConnectRequest(
     @SerialName("udp_port") val udpPort: Int,
     @SerialName("client_id") val clientId: String,
     @SerialName("device_name") val deviceName: String,
+    @SerialName("session_id") val sessionId: String? = null,
     @SerialName("protocol_version") val protocolVersion: Int = LANPULSE_PROTOCOL_VERSION,
     @SerialName("min_supported_protocol_version") val minSupportedProtocolVersion: Int =
         LANPULSE_MIN_SUPPORTED_PROTOCOL_VERSION,

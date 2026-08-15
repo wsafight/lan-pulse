@@ -71,6 +71,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 
 private val Accent = Color(0xFF138A5B)
 private val AccentDark = Color(0xFF54D59B)
@@ -447,6 +448,11 @@ private fun PlaybackPanel(
                     Metric(strings.lost, playback.packetsLost.toString(), Modifier.weight(1f))
                     Metric(strings.buffer, "${playback.bufferMs} ms", Modifier.weight(1f))
                 }
+                Row(Modifier.fillMaxWidth()) {
+                    Metric(strings.queued, "${playback.queuedMs} ms", Modifier.weight(1f))
+                    Metric(strings.jitter, formatJitter(playback.jitterMs), Modifier.weight(1f))
+                    Metric(strings.underruns, playback.audioUnderruns.toString(), Modifier.weight(1f))
+                }
             }
             TextButton(onClick = onDisconnect, modifier = Modifier.align(Alignment.End)) {
                 Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -467,6 +473,11 @@ private fun Metric(label: String, value: String, modifier: Modifier) {
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
         )
     }
+}
+
+private fun formatJitter(jitterMs: Double): String {
+    val roundedTenths = (jitterMs * 10.0).roundToInt() / 10.0
+    return "$roundedTenths ms"
 }
 
 @Composable

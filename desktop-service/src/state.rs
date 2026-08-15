@@ -1,5 +1,6 @@
 use std::{
     net::SocketAddr,
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -15,6 +16,7 @@ pub struct SessionState {
     pairing_security: RwLock<PairingSecurity>,
     audio: AudioConfig,
     target: RwLock<Option<SocketAddr>>,
+    target_generation: AtomicU64,
     device: RwLock<Option<ActiveDevice>>,
     media_source: RwLock<String>,
     stats: RwLock<Stats>,
@@ -142,6 +144,7 @@ impl SessionState {
             pairing_security: RwLock::new(PairingSecurity::default()),
             audio,
             target: RwLock::new(None),
+            target_generation: AtomicU64::new(0),
             device: RwLock::new(None),
             media_source: RwLock::new("idle".to_string()),
             stats: RwLock::new(Stats::default()),
@@ -208,10 +211,15 @@ impl SessionState {
 
     pub async fn set_target(&self, target: Option<SocketAddr>) {
         *self.target.write().await = target;
+        self.bump_target_generation();
     }
 
     pub async fn target(&self) -> Option<SocketAddr> {
         *self.target.read().await
+    }
+
+    pub fn target_generation(&self) -> u64 {
+        self.target_generation.load(Ordering::Acquire)
     }
 
     pub async fn connect_device(&self, device: ConnectedDevice) -> bool {
@@ -224,10 +232,40 @@ impl SessionState {
         }
 
         *self.target.write().await = Some(device.target);
+        self.bump_target_generation();
         *current = Some(ActiveDevice {
             info: device,
             refreshed_at: Instant::now(),
         });
+        true
+    }
+
+    pub async fn resume_device(
+        &self,
+        client_id: &str,
+        session_id: &str,
+        name: String,
+        target: SocketAddr,
+    ) -> bool {
+        let mut current = self.device.write().await;
+        let Some(active) = current.as_mut() else {
+            return false;
+        };
+        if active.refreshed_at.elapsed() >= self.lease_timeout {
+            *self.target.write().await = None;
+            self.bump_target_generation();
+            *current = None;
+            return false;
+        }
+        if active.info.client_id != client_id || active.info.session_id != session_id {
+            return false;
+        }
+
+        active.info.name = name;
+        active.info.target = target;
+        active.refreshed_at = Instant::now();
+        *self.target.write().await = Some(target);
+        self.bump_target_generation();
         true
     }
 
@@ -238,6 +276,7 @@ impl SessionState {
         };
         if active.refreshed_at.elapsed() >= self.lease_timeout {
             *self.target.write().await = None;
+            self.bump_target_generation();
             *current = None;
             return false;
         }
@@ -259,6 +298,7 @@ impl SessionState {
         }
 
         *self.target.write().await = None;
+        self.bump_target_generation();
         *current = None;
         true
     }
@@ -274,6 +314,7 @@ impl SessionState {
         }
 
         *self.target.write().await = None;
+        self.bump_target_generation();
         *current = None;
         true
     }
@@ -295,8 +336,15 @@ impl SessionState {
     }
 
     pub async fn record_packet(&self, bytes: u64, elapsed: Duration) {
+        self.record_packets(1, bytes, elapsed).await;
+    }
+
+    pub async fn record_packets(&self, packets: u64, bytes: u64, elapsed: Duration) {
+        if packets == 0 {
+            return;
+        }
         let mut stats = self.stats.write().await;
-        stats.packets_sent += 1;
+        stats.packets_sent += packets;
         stats.bytes_sent += bytes;
 
         let ms = elapsed.as_millis() as u64;
@@ -330,6 +378,10 @@ impl SessionState {
 
     pub async fn mark_media_running(&self) {
         self.stats.write().await.last_media_error = None;
+    }
+
+    fn bump_target_generation(&self) {
+        self.target_generation.fetch_add(1, Ordering::Release);
     }
 
     pub async fn snapshot(&self) -> StatsSnapshot {
@@ -518,6 +570,61 @@ mod tests {
         assert!(state.refresh_session("session-1").await);
         assert!(!state.refresh_session("session-old").await);
         assert_eq!(state.device().await.unwrap().session_id, "session-1");
+    }
+
+    #[tokio::test]
+    async fn resume_updates_target_for_active_session_without_repairing() {
+        let state = state();
+        assert!(
+            state
+                .connect_device(device("phone-a", "session-1", 5001))
+                .await
+        );
+        let target = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5002);
+
+        assert!(
+            state
+                .resume_device("phone-a", "session-1", "Phone A".to_string(), target)
+                .await
+        );
+
+        assert_eq!(state.target().await, Some(target));
+        assert_eq!(state.device().await.unwrap().target, target);
+    }
+
+    #[tokio::test]
+    async fn resume_rejects_wrong_or_expired_session() {
+        let state = SessionState::with_lease_timeout(
+            "123456".to_string(),
+            state().audio_config().clone(),
+            Duration::from_millis(10),
+        );
+        assert!(
+            state
+                .connect_device(device("phone-a", "session-1", 5001))
+                .await
+        );
+        let target = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5002);
+
+        assert!(
+            !state
+                .resume_device("phone-b", "session-1", "Phone B".to_string(), target)
+                .await
+        );
+        assert_eq!(
+            state.target().await,
+            Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5001))
+        );
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        assert!(
+            !state
+                .resume_device("phone-a", "session-1", "Phone A".to_string(), target)
+                .await
+        );
+        assert!(state.device().await.is_none());
+        assert!(state.target().await.is_none());
     }
 
     #[tokio::test]

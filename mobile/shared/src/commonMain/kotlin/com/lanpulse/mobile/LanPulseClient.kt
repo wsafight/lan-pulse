@@ -12,6 +12,18 @@ sealed interface PlaybackState {
         val packetsReceived: Long,
         val packetsLost: Long,
         val bufferMs: Int,
+        val queuedMs: Int = 0,
+        val jitterMs: Double = 0.0,
+        val audioUnderruns: Int = 0,
+        val driftInsertedFrames: Long = 0,
+        val driftDroppedFrames: Long = 0,
+        val invalidPackets: Long = 0,
+        val receiveQueueOverflows: Long = 0,
+        val packetPoolExhausted: Long = 0,
+        val duplicatePackets: Long = 0,
+        val latePackets: Long = 0,
+        val replacedPackets: Long = 0,
+        val prunedPackets: Long = 0,
     ) : PlaybackState
     data class Reconnecting(val desktopName: String, val reason: String) : PlaybackState
     data class Failed(val message: String) : PlaybackState

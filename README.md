@@ -76,7 +76,7 @@ Implemented:
 - `mobile/shared` KMP module with one Compose UI, pairing flow, validation, localization, and playback-state controller for Android and iPhone.
 - Android platform client with LAN discovery, manual pairing, and native playback integration.
 - Android foreground media-playback service with notification controls, a partial wake lock, and a high-performance Wi-Fi lock.
-- Android UDP/RTP receiver and low-latency `AudioTrack` PCM playback with a 15 ms initial adaptive buffer, a 10-60 ms operating range, packet-loss silence, clock-drift correction, stream timeout detection, and three-second reconnection.
+- Android UDP/RTP receiver and low-latency `AudioTrack` PCM playback with a 15 ms initial adaptive buffer, a 10-60 ms operating range, packet-loss silence, clock-drift correction, stream timeout detection, session resume after transient failures, network-aware reconnection, and live queue/jitter/underrun diagnostics.
 - Android QR pairing scanner built with CameraX and pure-JVM ZXing; scanned data is validated before it is applied.
 - Simplified Chinese and English mobile UI; English is the default on first launch, and the selected language is persisted.
 - Simplified Chinese and English desktop UI; English is the default on first launch, and the selected language is persisted.
@@ -92,7 +92,7 @@ Implemented:
 - UDP/RTP media transmission.
 - PIN-pairing control API.
 - Single-receiver protection with a 15-second renewable lease: another phone is rejected while the active phone can safely reconnect, and abandoned sessions expire automatically.
-- Supervised desktop media sending with bounded restart backoff, capture-drop/restart diagnostics, and explicit capture-thread shutdown.
+- Supervised desktop media sending with bounded restart backoff, capture-drop/restart diagnostics, target caching, batched packet counters, and explicit capture-thread shutdown.
 - Automatic control-port selection, defaulting to `4100..4199` in the desktop app.
 - Automatic LAN discovery-port selection, defaulting to `41000..41020`.
 - `lanpulse-discover` LAN discovery test tool.
@@ -122,7 +122,7 @@ Current limitations:
 - Android foreground/background playback is implemented but still needs physical-device latency, lock-screen, Wi-Fi-switch, and 30-minute stability validation.
 - iPhone playback and QR scanning still need physical-device LAN, camera-permission, background/lock-screen, interruption/route-change, latency, and long-duration validation. Adaptive jitter thresholds still require device measurements.
 - macOS system audio requires Screen & System Audio Recording permission. End-to-end capture remains unverified on this machine because TCC access is currently denied.
-- Persisted trusted devices, MediaSession integration, detailed jitter diagnostics, and long-duration physical-device tuning are not implemented yet.
+- Persisted trusted devices, pause/resume MediaSession controls, full diagnostic export, and long-duration physical-device tuning are not implemented yet.
 - The media stream is not encrypted yet; only the PIN-based control layer is implemented.
 - On Linux, the desktop tray depends on GTK/AppIndicator. Whether GNOME displays the tray icon depends on the installed desktop extensions.
 

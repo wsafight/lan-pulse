@@ -174,6 +174,8 @@ class RtpPacketTest {
         buffer.offer(packet(17))
 
         assertEquals(listOf(1, 1), recycled)
+        assertEquals(1, buffer.duplicatePackets)
+        assertEquals(1, buffer.replacedPackets)
     }
 
     @Test
