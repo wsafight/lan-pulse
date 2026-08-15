@@ -76,7 +76,7 @@ Implemented:
 - `mobile/shared` KMP module with one Compose UI, pairing flow, validation, localization, and playback-state controller for Android and iPhone.
 - Android platform client with LAN discovery, manual pairing, and native playback integration.
 - Android foreground media-playback service with notification controls, a partial wake lock, and a high-performance Wi-Fi lock.
-- Android UDP/RTP receiver and `AudioTrack` PCM playback with a dedicated audio-priority receive thread and two persisted playback modes: Immediate keeps only the current RTP packet, writes it non-blockingly into the platform's minimum output capacity, and does not wait for retransmission, correct clock drift, or rebuffer after an underrun; Adaptive starts at 120 ms, automatically operates from 40-450 ms, uses a 60 ms output target, grows quickly after network or scheduling disruption, and gradually returns toward the lowest stable delay. Both modes retain packet-loss handling, stream timeout detection, session resume after transient failures, network-aware reconnection, and segmented receive/dispatch/write diagnostics.
+- Android UDP/RTP receiver and `AudioTrack` PCM playback with a dedicated audio-priority receive thread and two persisted playback modes: Immediate keeps only the current valid RTP payload, writes it non-blockingly into the platform's minimum output capacity, and does not reorder packets, analyze loss, wait for retransmission, correct clock drift, or rebuffer after an underrun; Adaptive starts at 120 ms, automatically operates from 40-450 ms, uses a 60 ms output target, grows quickly after network or scheduling disruption, and gradually returns toward the lowest stable delay. Adaptive retains packet-loss handling, while both modes retain stream timeout detection, session resume after transient failures, network-aware reconnection, and receive/write diagnostics.
 - Android QR pairing scanner built with CameraX and pure-JVM ZXing; scanned data is validated before it is applied.
 - Simplified Chinese and English mobile UI with language and Android playback-mode choices in a dedicated settings page; English is the default on first launch, and selections are persisted.
 - Simplified Chinese and English desktop UI; English is the default on first launch, and the selected language is persisted.
@@ -174,6 +174,15 @@ Create a release build:
 cargo build --release --workspace
 ```
 
+Build and install the optimized Linux desktop app for the current user:
+
+```bash
+./scripts/install-linux.sh
+```
+
+This installs the app, service, desktop entry, and icon under `~/.local`. The
+developer-only `lanpulse-discover` and `lanpulse-recv` tools are not installed.
+
 Build and verify the Android app:
 
 ```bash
@@ -191,11 +200,14 @@ xcodebuild -project LanPulseIOS.xcodeproj -scheme LanPulseIOS \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
-Current Linux release binary sizes:
+Current release artifact sizes:
 
 ```text
-target/release/lanpulse-app       15M
-target/release/lanpulse-service  3.8M
-target/release/lanpulse-discover 1.2M
-target/release/lanpulse-recv     956K
+target/release/lanpulse-app                                                   9.2M
+target/release/lanpulse-service                                              2.3M
+mobile/androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk  1.9M
 ```
+
+The two Linux binaries compress to about 3.9 MB together. The Android Debug APK
+is about 17 MB because it includes Compose development tooling; release builds
+enable code and resource shrinking.

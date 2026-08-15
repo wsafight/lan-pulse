@@ -76,7 +76,7 @@ Rust native desktop shell
 - `mobile/shared` KMP 模块，为 Android 和 iPhone 提供同一份 Compose UI、配对流程、校验、多语言和播放状态控制器。
 - Android 平台客户端，包含局域网发现、手动配对和原生播放集成。
 - Android `mediaPlayback` 前台服务、通知栏断开操作、局部唤醒锁和 Wi-Fi 高性能锁。
-- Android UDP/RTP 接收和 `AudioTrack` PCM 播放，使用独立音频优先级收包线程，并提供两种可持久化的播放方式：即时播放只保留当前 RTP 包，向系统允许的最小输出容量执行非阻塞写入，不等待快速重传、不修正时钟漂移，欠载后也不重新缓冲；自适应播放从 120 ms 开始，在 40-450 ms 内自动调整，输出目标为 60 ms，网络或调度异常后快速增大，稳定后逐步回落到可稳定播放的最低延迟。两种方式均保留丢包处理、流超时检测、临时故障后的 session resume、网络感知重连，以及分段收包/派发/写入诊断。
+- Android UDP/RTP 接收和 `AudioTrack` PCM 播放，使用独立音频优先级收包线程，并提供两种可持久化的播放方式：即时播放只保留当前有效 RTP 载荷，向系统允许的最小输出容量执行非阻塞写入，不重排或分析丢包、不等待快速重传、不修正时钟漂移，欠载后也不重新缓冲；自适应播放从 120 ms 开始，在 40-450 ms 内自动调整，输出目标为 60 ms，网络或调度异常后快速增大，稳定后逐步回落到可稳定播放的最低延迟。自适应播放保留丢包处理，两种方式均保留流超时检测、临时故障后的 session resume、网络感知重连，以及收包/写入诊断。
 - Android 使用 CameraX 和纯 JVM ZXing 离线扫描配对二维码，并在应用扫描结果前校验数据。
 - 移动端使用独立设置页管理简体中文、英文和 Android 播放方式；首次默认英文，并记住用户选择。
 - 桌面壳支持简体中文和英文，首次默认英文并记住用户选择。
@@ -174,6 +174,15 @@ release 构建：
 cargo build --release --workspace
 ```
 
+为当前 Linux 用户构建并安装优化后的桌面应用：
+
+```bash
+./scripts/install-linux.sh
+```
+
+该脚本会把应用、服务、桌面启动项和图标安装到 `~/.local`。仅供开发使用的
+`lanpulse-discover` 和 `lanpulse-recv` 工具不会被安装。
+
 构建并检查 Android App：
 
 ```bash
@@ -191,11 +200,13 @@ xcodebuild -project LanPulseIOS.xcodeproj -scheme LanPulseIOS \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
-当前 Linux release 二进制大小：
+当前发布产物大小：
 
 ```text
-target/release/lanpulse-app       15M
-target/release/lanpulse-service  3.8M
-target/release/lanpulse-discover 1.2M
-target/release/lanpulse-recv     956K
+target/release/lanpulse-app                                                   9.2M
+target/release/lanpulse-service                                              2.3M
+mobile/androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk  1.9M
 ```
+
+两个 Linux 二进制压缩后合计约 3.9 MB。Android Debug APK 约为 17 MB，原因是
+包含 Compose 开发工具；Release 构建已经启用代码和资源裁剪。

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LanPulse
+Name[zh_CN]=LanPulse 音频共享
+Comment=Stream Linux audio to mobile devices
+Comment[zh_CN]=将 Linux 音频串流到移动设备
+Exec=lanpulse-app
+TryExec=lanpulse-app
+Icon=com.lanpulse.LanPulse
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=audio;stream;LAN;RTP;
+StartupNotify=true
+StartupWMClass=LanPulse
