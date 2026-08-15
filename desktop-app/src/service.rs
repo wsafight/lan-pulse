@@ -1,4 +1,5 @@
 mod controller;
+mod diagnostics;
 mod http;
 mod model;
 mod process;

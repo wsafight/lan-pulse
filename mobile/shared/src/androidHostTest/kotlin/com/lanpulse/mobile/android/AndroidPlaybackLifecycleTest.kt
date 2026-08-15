@@ -12,17 +12,19 @@ import kotlin.test.assertTrue
 
 class AndroidPlaybackLifecycleTest {
     @Test
-    fun stopsForPermanentOrTransientAudioFocusLoss() {
+    fun stopsOnlyForPermanentAudioFocusLoss() {
         assertTrue(shouldStopForAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS))
-        assertTrue(shouldStopForAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT))
+        assertFalse(shouldStopForAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT))
         assertFalse(shouldStopForAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK))
         assertFalse(shouldStopForAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN))
     }
 
     @Test
-    fun stopsWhenAnyOutputDeviceIsRemoved() {
-        assertFalse(shouldStopForOutputDeviceRemoval(0))
-        assertTrue(shouldStopForOutputDeviceRemoval(1))
+    fun stopsOnlyWhenPrivateOutputDevicesAreRemoved() {
+        assertTrue(shouldStopForOutputDeviceRemoval(android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES))
+        assertTrue(shouldStopForOutputDeviceRemoval(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertFalse(shouldStopForOutputDeviceRemoval(android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER))
+        assertFalse(shouldStopForOutputDeviceRemoval(android.media.AudioDeviceInfo.TYPE_REMOTE_SUBMIX))
     }
 
     @Test

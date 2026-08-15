@@ -1,16 +1,26 @@
 package com.lanpulse.mobile.android
 
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.session.PlaybackState as MediaPlaybackState
 import com.lanpulse.mobile.MobileStrings
 import com.lanpulse.mobile.PlaybackState
 
 internal fun shouldStopForAudioFocusChange(focusChange: Int): Boolean =
-    focusChange == AudioManager.AUDIOFOCUS_LOSS ||
-        focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+    focusChange == AudioManager.AUDIOFOCUS_LOSS
 
-internal fun shouldStopForOutputDeviceRemoval(removedOutputDeviceCount: Int): Boolean =
-    removedOutputDeviceCount > 0
+internal fun shouldStopForOutputDeviceRemoval(deviceType: Int): Boolean = when (deviceType) {
+    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+    AudioDeviceInfo.TYPE_USB_HEADSET,
+    AudioDeviceInfo.TYPE_HEARING_AID,
+    AudioDeviceInfo.TYPE_BLE_HEADSET,
+    AudioDeviceInfo.TYPE_BLE_SPEAKER,
+    AudioDeviceInfo.TYPE_BLE_BROADCAST
+    -> true
+    else -> false
+}
 
 internal fun mediaSessionStateFor(playbackState: PlaybackState): Int = when (playbackState) {
     PlaybackState.Idle -> MediaPlaybackState.STATE_STOPPED

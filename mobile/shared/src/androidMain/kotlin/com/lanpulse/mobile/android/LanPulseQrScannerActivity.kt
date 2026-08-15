@@ -82,6 +82,8 @@ class LanPulseQrScannerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AndroidDiagnosticLog.initialize(applicationContext)
+        AndroidDiagnosticLog.event("pairing_scanner_created")
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
         setContentView(scannerView())
@@ -111,12 +113,14 @@ class LanPulseQrScannerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        AndroidDiagnosticLog.event("pairing_scanner_destroyed", "completed=${completed.get()}")
         cameraExecutor.shutdown()
         super.onDestroy()
     }
 
     private fun startCamera() {
         if (cameraStarted || isFinishing || completed.get()) return
+        AndroidDiagnosticLog.event("pairing_camera_starting")
         cameraStarted = true
         statusView.text = strings.lookingForPairingCode
 
@@ -142,6 +146,7 @@ class LanPulseQrScannerActivity : ComponentActivity() {
                         analysis,
                     )
                 }.onFailure { error ->
+                    AndroidDiagnosticLog.error("pairing_camera_failed", error)
                     failAndFinish(error.message ?: strings.cameraUnavailable)
                 }
             },
@@ -155,6 +160,10 @@ class LanPulseQrScannerActivity : ComponentActivity() {
             val rawValue = decodeQrCode(imageProxy) ?: return
             val pairing = parsePairingCode(rawValue)
             if (pairing != null && completed.compareAndSet(false, true)) {
+                AndroidDiagnosticLog.event(
+                    "pairing_code_found",
+                    "control_url=${pairing.controlUrl}",
+                )
                 AndroidPairingScanner.publish(PairingScanEvent.Found(pairing))
                 runOnUiThread { finish() }
             } else if (pairing == null) {
@@ -210,6 +219,7 @@ class LanPulseQrScannerActivity : ComponentActivity() {
     }
 
     private fun showPermissionDialog() {
+        AndroidDiagnosticLog.event("pairing_camera_permission_denied")
         statusView.text = strings.cameraPermissionRequired
         AlertDialog.Builder(this)
             .setTitle(strings.cameraPermission)
@@ -228,6 +238,7 @@ class LanPulseQrScannerActivity : ComponentActivity() {
 
     private fun failAndFinish(message: String) {
         if (!completed.compareAndSet(false, true)) return
+        AndroidDiagnosticLog.event("pairing_scanner_failed", "message=$message")
         AndroidPairingScanner.publish(PairingScanEvent.Failed(message))
         runOnUiThread { finish() }
     }

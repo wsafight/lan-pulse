@@ -1,8 +1,11 @@
 use std::{
     io::{BufRead, BufReader},
     process::{Child, Command, Stdio},
-    sync::mpsc,
+    sync::mpsc::{self, RecvTimeoutError},
+    time::Duration,
 };
+
+use eframe::egui;
 
 use crate::settings::AppSettings;
 
@@ -51,11 +54,29 @@ struct ServiceRuntime {
 pub(super) fn service_worker(
     command_rx: mpsc::Receiver<WorkerCommand>,
     event_tx: mpsc::Sender<WorkerEvent>,
+    repaint_context: Option<egui::Context>,
 ) {
     let mut runtime = ServiceRuntime::default();
     send_snapshot(&runtime, &event_tx);
+    request_repaint(repaint_context.as_ref());
 
-    while let Ok(command) = command_rx.recv() {
+    loop {
+        let command = match command_rx.recv_timeout(AUTO_POLL_INTERVAL) {
+            Ok(command) => command,
+            Err(RecvTimeoutError::Timeout) => {
+                if runtime.child.is_some() {
+                    runtime.poll(&event_tx);
+                    send_snapshot(&runtime, &event_tx);
+                    request_repaint(repaint_context.as_ref());
+                }
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                runtime.stop(&event_tx, false);
+                break;
+            }
+        };
+
         match command {
             WorkerCommand::Start(settings) => {
                 let result = runtime.start(&settings, &event_tx);
@@ -95,6 +116,15 @@ pub(super) fn service_worker(
                 break;
             }
         }
+        request_repaint(repaint_context.as_ref());
+    }
+}
+
+const AUTO_POLL_INTERVAL: Duration = Duration::from_millis(1200);
+
+fn request_repaint(context: Option<&egui::Context>) {
+    if let Some(context) = context {
+        context.request_repaint();
     }
 }
 
@@ -130,7 +160,9 @@ impl ServiceRuntime {
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    let _ = stderr_tx.send(WorkerEvent::Log(LogEvent::ServiceOutput(line)));
+                    let event = LogEvent::ServiceOutput(line);
+                    super::diagnostics::append(&event);
+                    let _ = stderr_tx.send(WorkerEvent::Log(event));
                 }
             });
         }
@@ -440,7 +472,7 @@ mod tests {
     fn service_worker_emits_initial_snapshot_and_handles_shutdown() {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let worker = std::thread::spawn(move || service_worker(command_rx, event_tx));
+        let worker = std::thread::spawn(move || service_worker(command_rx, event_tx, None));
 
         let WorkerEvent::Snapshot(snapshot) = event_rx.recv().unwrap() else {
             panic!("expected initial snapshot");
@@ -455,7 +487,7 @@ mod tests {
     fn service_worker_handles_stopped_stop_poll_and_disconnect_commands() {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let worker = std::thread::spawn(move || service_worker(command_rx, event_tx));
+        let worker = std::thread::spawn(move || service_worker(command_rx, event_tx, None));
 
         let WorkerEvent::Snapshot(initial) = event_rx.recv().unwrap() else {
             panic!("expected initial snapshot");

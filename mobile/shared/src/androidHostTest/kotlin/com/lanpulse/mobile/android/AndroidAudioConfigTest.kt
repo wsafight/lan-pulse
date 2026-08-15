@@ -39,8 +39,8 @@ class AndroidAudioConfigTest {
         assertEquals(3, packetsForDuration(durationMs = 11, packetMs = 5))
         assertEquals(2, nextPowerOfTwo(1))
         assertEquals(8, nextPowerOfTwo(5))
-        assertEquals(12, missingPacketWaitMs(5))
-        assertEquals(20, missingPacketWaitMs(20))
+        assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 0, sampleRate = 48_000))
+        assertEquals(20, missingPacketWaitMs(packetMs = 20, queuedFrames = 0, sampleRate = 48_000))
     }
 
     @Test

@@ -9,7 +9,7 @@ use super::{
         LogEntry, LogEvent, ServiceActivity, ServiceError, ServiceNotice, ServiceSnapshot,
         format_error,
     },
-    runtime::{WorkerCommand, WorkerEvent, WorkerSnapshot, service_worker},
+    runtime::{WorkerCommand, WorkerEvent, service_worker},
 };
 
 pub struct ServiceController {
@@ -24,9 +24,20 @@ pub struct ServiceController {
 
 impl Default for ServiceController {
     fn default() -> Self {
+        Self::with_repaint_context(None)
+    }
+}
+
+impl ServiceController {
+    pub fn new(repaint_context: eframe::egui::Context) -> Self {
+        Self::with_repaint_context(Some(repaint_context))
+    }
+
+    fn with_repaint_context(repaint_context: Option<eframe::egui::Context>) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let worker = std::thread::spawn(move || service_worker(command_rx, event_tx));
+        let worker =
+            std::thread::spawn(move || service_worker(command_rx, event_tx, repaint_context));
 
         Self {
             command_tx,
@@ -38,9 +49,7 @@ impl Default for ServiceController {
             poll_pending: false,
         }
     }
-}
 
-impl ServiceController {
     pub fn start(&mut self, settings: &AppSettings) {
         self.pump();
         if self.snapshot.running || self.snapshot.is_busy() {
@@ -143,6 +152,9 @@ impl ServiceController {
     }
 
     pub fn push_log(&mut self, event: LogEvent) {
+        if !matches!(event, LogEvent::ServiceOutput(_)) {
+            super::diagnostics::append(&event);
+        }
         if self.logs.len() >= MAX_LOG_ENTRIES {
             self.logs.pop_back();
         }
@@ -200,10 +212,11 @@ fn timestamp() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::VecDeque, sync::mpsc};
+    use std::{collections::VecDeque, sync::mpsc, time::Duration};
 
-    use super::{MAX_LOG_ENTRIES, ServiceController, WorkerCommand, WorkerEvent, WorkerSnapshot};
+    use super::{MAX_LOG_ENTRIES, ServiceController, WorkerCommand, WorkerEvent};
     use crate::{
+        service::runtime::WorkerSnapshot,
         service::{LogEvent, ServiceActivity, ServiceError, ServiceInfo, ServiceNotice},
         settings::AppSettings,
     };
@@ -240,6 +253,20 @@ mod tests {
             },
             event_tx,
         )
+    }
+
+    #[test]
+    fn worker_events_wake_the_desktop_ui() {
+        let context = eframe::egui::Context::default();
+        let (repaint_tx, repaint_rx) = mpsc::channel();
+        context.set_request_repaint_callback(move |_| {
+            let _ = repaint_tx.send(());
+        });
+
+        let controller = ServiceController::new(context);
+
+        repaint_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        drop(controller);
     }
 
     fn service_info() -> ServiceInfo {

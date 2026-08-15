@@ -17,7 +17,7 @@ class AndroidLanPulseClient(
     context: Context,
     private val onForegroundPlaybackRequested: () -> Unit = {},
 ) : LanPulseClient {
-    private val appContext = context.applicationContext
+    private val appContext = context.applicationContext.also(AndroidDiagnosticLog::initialize)
     private val clientId = AndroidClientIdentityStore.loadOrCreate(appContext)
 
     override val playbackState: StateFlow<PlaybackState> = AndroidPlaybackSession.state
@@ -27,6 +27,10 @@ class AndroidLanPulseClient(
     override suspend fun discover(): List<DesktopEndpoint> = UdpDiscoveryClient.discover()
 
     override fun connect(endpoint: DesktopEndpoint, pin: String, language: MobileLanguage) {
+        AndroidDiagnosticLog.event(
+            "connect_requested",
+            "desktop=${endpoint.name} control_url=${endpoint.controlUrl}",
+        )
         onForegroundPlaybackRequested()
         val intent = Intent(appContext, LanPulsePlaybackService::class.java).apply {
             action = LanPulsePlaybackService.ACTION_CONNECT
@@ -43,6 +47,7 @@ class AndroidLanPulseClient(
                 appContext.startService(intent)
             }
         }.onFailure { error ->
+            AndroidDiagnosticLog.error("foreground_service_start_failed", error)
             AndroidPlaybackSession.update(
                 PlaybackState.Failed(error.message ?: language.strings().unableToConnect),
             )
@@ -50,22 +55,26 @@ class AndroidLanPulseClient(
     }
 
     override fun disconnect() {
+        AndroidDiagnosticLog.event("disconnect_requested")
         val intent = Intent(appContext, LanPulsePlaybackService::class.java).apply {
             action = LanPulsePlaybackService.ACTION_DISCONNECT
         }
         runCatching { appContext.startService(intent) }
             .onFailure {
+                AndroidDiagnosticLog.error("disconnect_service_start_failed", it)
                 AndroidPlaybackSession.update(PlaybackState.Idle)
                 appContext.stopService(intent)
             }
     }
 
     override fun scanPairingCode(language: MobileLanguage) {
+        AndroidDiagnosticLog.event("pairing_scanner_requested")
         val intent = Intent(appContext, LanPulseQrScannerActivity::class.java)
             .putExtra(LanPulseQrScannerActivity.EXTRA_LANGUAGE, language.code)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { appContext.startActivity(intent) }
             .onFailure { error ->
+                AndroidDiagnosticLog.error("pairing_scanner_start_failed", error)
                 AndroidPairingScanner.publish(
                     PairingScanEvent.Failed(
                         error.message ?: language.strings().unableToOpenCamera,

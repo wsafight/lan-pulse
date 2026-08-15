@@ -119,15 +119,27 @@ class RtpPacketTest {
         val buffer = RtpJitterBuffer(targetPacketCount = 4, maxBufferedPackets = 12)
         (0..3).forEach { buffer.offer(packet(it)) }
         startAndDrain(buffer, 4)
-        (4..24).forEach { buffer.offer(packet(it)) }
+        (4..41).forEach { buffer.offer(packet(it)) }
 
         assertTrue(buffer.needsLatencyReset())
         buffer.startNearLive()
 
-        assertContentEquals(payload(21), buffer.pollExpected()?.payloadCopy())
+        assertContentEquals(payload(38), buffer.pollExpected()?.payloadCopy())
         repeat(2) { assertNotNull(buffer.pollExpected()) }
-        assertContentEquals(payload(24), buffer.pollExpected()?.payloadCopy())
+        assertContentEquals(payload(41), buffer.pollExpected()?.payloadCopy())
         assertEquals(0, buffer.bufferedLeadPackets())
+    }
+
+    @Test
+    fun jitterBufferKeepsRecoverableBacklogAfterReceiverSchedulingPause() {
+        val buffer = RtpJitterBuffer(targetPacketCount = 4, maxBufferedPackets = 12)
+        (100..103).forEach { buffer.offer(packet(it)) }
+        startAndDrain(buffer, 4)
+
+        (104..140).forEach { buffer.offer(packet(it)) }
+
+        assertFalse(buffer.needsLatencyReset())
+        assertContentEquals(payload(104), buffer.pollExpected()?.payloadCopy())
     }
 
     @Test
@@ -162,6 +174,18 @@ class RtpPacketTest {
     }
 
     @Test
+    fun jitterBufferDoesNotResetForConsecutivePacketsFromItsNormalHistoryWindow() {
+        val buffer = RtpJitterBuffer(targetPacketCount = 4, maxBufferedPackets = 12)
+        (196..199).forEach { buffer.offer(packet(it)) }
+        startAndDrain(buffer, 4)
+
+        (152..159).forEach { buffer.offer(packet(it)) }
+
+        assertFalse(buffer.needsSequenceReset())
+        assertEquals(8, buffer.latePackets)
+    }
+
+    @Test
     fun jitterBufferRecyclesDuplicateAndReplacedPackets() {
         val recycled = mutableListOf<Int>()
         val buffer = RtpJitterBuffer(
@@ -189,18 +213,18 @@ class RtpPacketTest {
     }
 
     @Test
-    fun stableNetworkShrinksAdaptiveBufferToTenMilliseconds() {
+    fun stableNetworkShrinksAdaptiveBufferToFiveHundredMilliseconds() {
         val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
         var timestamp = 0L
         var arrival = 0L
 
-        repeat(1_200) {
+        repeat(24_000) {
             controller.observe(timestamp, arrival)
             timestamp = (timestamp + 240) and 0xFFFF_FFFFL
             arrival += 5_000_000
         }
 
-        assertEquals(2, controller.targetPacketCount)
+        assertEquals(100, controller.targetPacketCount)
         assertTrue(controller.jitterMs < 0.01)
     }
 
@@ -225,33 +249,27 @@ class RtpPacketTest {
         repeat(300) { index ->
             controller.observe(timestamp, arrival)
             timestamp = (timestamp + 240) and 0xFFFF_FFFFL
-            arrival += if (index % 2 == 0) 1_000_000 else 12_000_000
+            arrival += if (index % 2 == 0) 1_000_000 else 100_000_000
         }
 
-        assertTrue(controller.targetPacketCount > 3)
+        assertTrue(controller.targetPacketCount > 120)
         assertTrue(controller.jitterMs > 1.0)
     }
 
     @Test
-    fun adaptiveBufferReturnsToTenMillisecondsAfterNetworkStabilizes() {
+    fun adaptiveBufferReturnsToFiveHundredMillisecondsAfterNetworkStabilizes() {
         val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
         var timestamp = 0L
-        var arrival = 0L
+        var arrival = 1_000_000_000L
+        controller.onBacklog(arrival)
 
-        repeat(300) { index ->
-            controller.observe(timestamp, arrival)
-            timestamp = (timestamp + 240) and 0xFFFF_FFFFL
-            arrival += if (index % 2 == 0) 1_000_000 else 12_000_000
-        }
-        assertTrue(controller.targetPacketCount > 3)
-
-        repeat(12_000) {
+        repeat(75_000) {
             controller.observe(timestamp, arrival)
             timestamp = (timestamp + 240) and 0xFFFF_FFFFL
             arrival += 5_000_000
         }
 
-        assertEquals(2, controller.targetPacketCount)
+        assertEquals(100, controller.targetPacketCount)
     }
 
     @Test
@@ -260,7 +278,33 @@ class RtpPacketTest {
 
         controller.onUnderrun(1_000_000_000)
 
-        assertEquals(4, controller.targetPacketCount)
+        assertEquals(121, controller.targetPacketCount)
+    }
+
+    @Test
+    fun batchedUnderrunsQuicklyRaiseAndHoldAdaptiveTarget() {
+        val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
+        val underrunAt = 1_000_000_000L
+        controller.onUnderrun(underrunAt, severityPackets = 8)
+        var timestamp = 0L
+        var arrival = underrunAt
+
+        repeat(10_000) {
+            controller.observe(timestamp, arrival)
+            timestamp = (timestamp + 240) and 0xFFFF_FFFFL
+            arrival += 5_000_000
+        }
+
+        assertEquals(128, controller.targetPacketCount)
+    }
+
+    @Test
+    fun receiverSchedulingBacklogRaisesAdaptiveTargetToMaximum() {
+        val controller = AdaptiveJitterController(sampleRate = 48_000, packetMs = 5)
+
+        controller.onBacklog(1_000_000_000L)
+
+        assertEquals(160, controller.targetPacketCount)
     }
 
     @Test
@@ -273,12 +317,32 @@ class RtpPacketTest {
     }
 
     @Test
-    fun driftControllerAddsAndRemovesOneFrameOutsideTolerance() {
+    fun driftControllerRequiresPersistentErrorAndRateLimitsCorrections() {
         val controller = ClockDriftController(framesPerPacket = 240)
 
-        assertEquals(-1, controller.correction(1_000, 720))
-        assertEquals(1, controller.correction(400, 720))
+        assertEquals(listOf(0, 0, 0, -1), List(4) { controller.correction(1_200, 720) })
+        assertTrue(List(39) { controller.correction(1_200, 720) }.all { it == 0 })
+        assertEquals(-1, controller.correction(1_200, 720))
+        controller.reset()
+        assertEquals(listOf(0, 0, 0, 1), List(4) { controller.correction(200, 720) })
         assertEquals(0, controller.correction(700, 720))
+    }
+
+    @Test
+    fun missingPacketWaitUsesAvailablePlaybackQueueWithoutDrainingItsReserve() {
+        assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 240, sampleRate = 48_000))
+        assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 1_440, sampleRate = 48_000))
+        assertEquals(5, missingPacketWaitMs(packetMs = 5, queuedFrames = 4_800, sampleRate = 48_000))
+        assertEquals(100, missingPacketWaitMs(packetMs = 5, queuedFrames = 9_600, sampleRate = 48_000))
+    }
+
+    @Test
+    fun concealmentRefillsPlaybackQueueToItsSafetyReserve() {
+        assertEquals(20, concealmentPacketCount(packetMs = 5, queuedFrames = 0, sampleRate = 48_000))
+        assertEquals(16, concealmentPacketCount(packetMs = 5, queuedFrames = 960, sampleRate = 48_000))
+        assertEquals(8, concealmentPacketCount(packetMs = 5, queuedFrames = 2_880, sampleRate = 48_000))
+        assertEquals(0, concealmentPacketCount(packetMs = 5, queuedFrames = 4_800, sampleRate = 48_000))
+        assertEquals(0, concealmentPacketCount(packetMs = 5, queuedFrames = 9_600, sampleRate = 48_000))
     }
 
     @Test
@@ -291,6 +355,25 @@ class RtpPacketTest {
 
         assertEquals(12, shortened)
         assertEquals(20, lengthened)
+    }
+
+    @Test
+    fun pcmAdjusterSmoothsTheSampleSlipAcrossMultipleFrames() {
+        val input = ByteArray(64 * 2)
+        repeat(64) { frame ->
+            val sample = frame * 100
+            input[frame * 2] = sample.toByte()
+            input[frame * 2 + 1] = (sample shr 8).toByte()
+        }
+        val adjuster = Pcm16FrameAdjuster(maxPayloadBytes = input.size, bytesPerFrame = 2)
+
+        val shortened = adjuster.adjust(input, 0, input.size, correction = -1)
+        val shortenedSamples = samples(adjuster.output, shortened)
+        val lengthened = adjuster.adjust(input, 0, input.size, correction = 1)
+        val lengthenedSamples = samples(adjuster.output, lengthened)
+
+        assertTrue(shortenedSamples.zipWithNext().all { (first, second) -> second - first in 0..110 })
+        assertTrue(lengthenedSamples.zipWithNext().all { (first, second) -> second - first in 0..110 })
     }
 
     @Test
@@ -324,4 +407,11 @@ class RtpPacketTest {
     }
 
     private fun payload(sequence: Int): ByteArray = byteArrayOf((sequence and 0xFF).toByte())
+
+    private fun samples(bytes: ByteArray, length: Int): List<Int> =
+        (0 until length step 2).map { offset ->
+            (((bytes[offset + 1].toInt() and 0xFF) shl 8) or (bytes[offset].toInt() and 0xFF))
+                .toShort()
+                .toInt()
+        }
 }

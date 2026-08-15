@@ -2,13 +2,28 @@ use crate::state::StatsSnapshot;
 
 pub fn summarize_stats(stats: &StatsSnapshot) -> String {
     format!(
-        "packets={}, bytes={}, target={}",
+        "packets={}, bytes={}, target={}, device_session={}, source={}, capture_dropped={}, \
+         capture_restarts={}, rtp_send_errors={}, media_restarts={}, last_packet_ms={}",
         stats.packets_sent,
         stats.bytes_sent,
         stats
             .target
             .map(|target| target.to_string())
-            .unwrap_or_else(|| "none".to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        stats
+            .device
+            .as_ref()
+            .map(|device| device.session_id.as_str())
+            .unwrap_or("none"),
+        stats.media_source,
+        stats.capture_packets_dropped,
+        stats.capture_restarts,
+        stats.rtp_send_errors,
+        stats.media_restarts,
+        stats
+            .last_packet_at_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".to_string()),
     )
 }
 
@@ -39,7 +54,12 @@ mod tests {
             last_packet_at_ms: None,
         };
 
-        assert_eq!(summarize_stats(&stats), "packets=7, bytes=128, target=none");
+        assert_eq!(
+            summarize_stats(&stats),
+            "packets=7, bytes=128, target=none, device_session=none, source=idle, \
+             capture_dropped=0, capture_restarts=0, rtp_send_errors=0, media_restarts=0, \
+             last_packet_ms=none"
+        );
     }
 
     #[test]
@@ -66,7 +86,9 @@ mod tests {
 
         assert_eq!(
             summarize_stats(&stats),
-            "packets=3, bytes=960, target=192.168.1.50:5504"
+            "packets=3, bytes=960, target=192.168.1.50:5504, device_session=none, \
+             source=tone, capture_dropped=0, capture_restarts=0, rtp_send_errors=0, \
+             media_restarts=0, last_packet_ms=none"
         );
     }
 }

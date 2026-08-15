@@ -1,6 +1,7 @@
 /target/
 **/target/
 *.log
+/diagnostics/
 .env
 
 # Kotlin / Android

@@ -22,7 +22,11 @@ async fn main() -> Result<()> {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "lanpulse_service=info".into()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(std::io::stderr),
+        )
         .init();
 
     run(Options::from_env()?).await
@@ -35,6 +39,7 @@ async fn run(options: Options) -> Result<()> {
         .set_media_source(configured_media_source(options.source))
         .await;
 
+    tokio::spawn(log_stats(Arc::clone(&state)));
     spawn_lease_expirer(Arc::clone(&state));
     let (listener, control_port) = bind_first_available(
         &options.host,
@@ -159,7 +164,6 @@ async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-#[allow(dead_code)]
 async fn log_stats(state: Arc<SessionState>) {
     loop {
         tokio::time::sleep(Duration::from_secs(5)).await;

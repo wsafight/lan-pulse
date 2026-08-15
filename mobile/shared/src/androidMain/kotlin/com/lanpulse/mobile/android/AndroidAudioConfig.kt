@@ -52,8 +52,19 @@ internal fun expectedPayloadBytes(audio: AudioConfig): Int {
     return bytes.toInt()
 }
 
-internal fun missingPacketWaitMs(packetMs: Int): Long =
-    maxOf(MIN_MISSING_PACKET_WAIT_MS, packetMs.toLong())
+internal fun missingPacketWaitMs(packetMs: Int, queuedFrames: Long, sampleRate: Int): Long {
+    val queuedMs = queuedFrames * 1_000 / sampleRate
+    val reserveMs = maxOf(MIN_AUDIO_QUEUE_RESERVE_MS, packetMs * 2).toLong()
+    return (queuedMs - reserveMs).coerceIn(packetMs.toLong(), MAX_MISSING_PACKET_WAIT_MS)
+}
+
+internal fun concealmentPacketCount(packetMs: Int, queuedFrames: Long, sampleRate: Int): Int {
+    val framesPerPacket = sampleRate.toLong() * packetMs / 1_000
+    val reserveFrames = sampleRate.toLong() * MIN_AUDIO_QUEUE_RESERVE_MS / 1_000
+    if (queuedFrames >= reserveFrames) return 0
+    val missingFrames = reserveFrames - queuedFrames
+    return ((missingFrames + framesPerPacket - 1) / framesPerPacket).toInt()
+}
 
 internal fun packetsForDuration(durationMs: Int, packetMs: Int): Int =
     ((durationMs + packetMs - 1) / packetMs).coerceAtLeast(MIN_TARGET_PACKETS)
@@ -63,18 +74,19 @@ internal fun nextPowerOfTwo(value: Int): Int {
     return Integer.highestOneBit(value - 1).coerceAtLeast(1) shl 1
 }
 
-internal const val MAX_BUFFER_MS = 80
+internal const val MAX_BUFFER_MS = 800
 internal const val STATS_UPDATE_INTERVAL_MS = 500
 internal const val UNDERRUN_CHECK_INTERVAL_MS = 100
 internal const val STREAM_TIMEOUT_MS = 3_000
 internal const val MAX_RTP_HEADER_BYTES = 512
-internal const val PACKET_QUEUE_CAPACITY = 64
+internal const val PACKET_QUEUE_CAPACITY = 256
 internal const val PACKET_POOL_HEADROOM = 4
 internal const val UDP_RECEIVE_BUFFER_BYTES = 256 * 1024
 internal const val PCM_16_BYTES_PER_SAMPLE = 2
 internal const val STORED_PACKET_MULTIPLIER = 4
 
-private const val MIN_MISSING_PACKET_WAIT_MS = 12L
+private const val MIN_AUDIO_QUEUE_RESERVE_MS = 100
+private const val MAX_MISSING_PACKET_WAIT_MS = 100L
 private const val UINT32_MAX = 0xFFFF_FFFFL
 private const val MIN_SAMPLE_RATE = 8_000
 private const val MAX_SAMPLE_RATE = 192_000

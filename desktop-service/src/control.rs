@@ -51,7 +51,13 @@ async fn index() -> &'static str {
     "LanPulse service is running. Pair from the mobile app with the printed PIN.\n"
 }
 
-async fn status(State(state): State<Arc<SessionState>>) -> Json<StatusResponse> {
+async fn status(
+    State(state): State<Arc<SessionState>>,
+    ConnectInfo(remote): ConnectInfo<SocketAddr>,
+) -> Json<StatusResponse> {
+    if remote.ip().is_loopback() {
+        state.refresh_pairing_pin();
+    }
     let stats = state.snapshot().await;
     Json(StatusResponse {
         ok: true,
@@ -66,6 +72,12 @@ async fn connect(
     Json(request): Json<ConnectRequest>,
 ) -> impl IntoResponse {
     if !request.protocol_is_compatible() {
+        tracing::warn!(
+            %remote,
+            protocol_version = ?request.protocol_version,
+            min_supported_protocol_version = ?request.min_supported_protocol_version,
+            "rejected incompatible mobile protocol"
+        );
         return (
             StatusCode::UPGRADE_REQUIRED,
             Json(ConnectResponse::protocol_incompatible()),
@@ -87,6 +99,14 @@ async fn connect(
             .resume_device(&client_id, session_id, device_name.clone(), target)
             .await
     {
+        tracing::info!(
+            %remote,
+            %client_id,
+            %session_id,
+            device = %device_name,
+            %target,
+            "resumed mobile session"
+        );
         let response = ConnectResponse {
             ok: true,
             message: format!("resumed {}", device_name),
@@ -103,12 +123,15 @@ async fn connect(
         return (StatusCode::OK, Json(response)).into_response();
     }
 
-    match state.authorize_pairing_pin(&request.pin).await {
+    let pairing_result = state.authorize_pairing_pin(&request.pin).await;
+    match pairing_result {
         PairingPinResult::Accepted => {}
         PairingPinResult::Invalid => {
+            tracing::warn!(%remote, %client_id, "rejected invalid pairing PIN");
             return (StatusCode::UNAUTHORIZED, Json(ConnectResponse::denied())).into_response();
         }
         PairingPinResult::Expired => {
+            tracing::warn!(%remote, %client_id, "rejected expired pairing PIN");
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(ConnectResponse::pin_expired()),
@@ -116,6 +139,7 @@ async fn connect(
                 .into_response();
         }
         PairingPinResult::Blocked => {
+            tracing::warn!(%remote, %client_id, "blocked mobile pairing attempt");
             return (
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(ConnectResponse::too_many_attempts()),
@@ -137,8 +161,16 @@ async fn connect(
     };
     let device = ConnectedDevice::new(client_id, session_id.clone(), device_name.clone(), target);
     if !state.connect_device(device).await {
+        tracing::warn!(%remote, %session_id, device = %device_name, "mobile session rejected as busy");
         return (StatusCode::CONFLICT, Json(ConnectResponse::device_busy())).into_response();
     }
+    tracing::info!(
+        %remote,
+        %session_id,
+        device = %device_name,
+        %target,
+        "connected mobile session"
+    );
 
     let response = ConnectResponse {
         ok: true,
@@ -166,6 +198,11 @@ async fn disconnect(
     }
 
     let disconnected = state.disconnect_device(request.session_id.as_deref()).await;
+    if disconnected {
+        tracing::info!(session_id = ?request.session_id, "disconnected mobile session");
+    } else {
+        tracing::warn!(session_id = ?request.session_id, "ignored stale disconnect request");
+    }
     let message = if disconnected {
         "disconnected"
     } else {
@@ -184,6 +221,7 @@ async fn heartbeat(
     if state.refresh_session(&request.session_id).await {
         (StatusCode::OK, "ok")
     } else {
+        tracing::warn!(session_id = %request.session_id, "rejected heartbeat for inactive session");
         (StatusCode::CONFLICT, "session is no longer active")
     }
 }
@@ -395,6 +433,10 @@ mod tests {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 49152)
     }
 
+    fn loopback() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 49152)
+    }
+
     fn connect_request(pin: &str) -> ConnectRequest {
         ConnectRequest {
             pin: pin.to_string(),
@@ -422,12 +464,52 @@ mod tests {
             .record_packet(100, std::time::Duration::from_millis(5))
             .await;
 
-        let Json(response) = status(State(Arc::clone(&state))).await;
+        let Json(response) = status(State(Arc::clone(&state)), ConnectInfo(loopback())).await;
 
         assert!(response.ok);
         assert_eq!(response.audio.packet_ms, 5);
         assert_eq!(response.stats.packets_sent, 1);
         assert_eq!(response.stats.bytes_sent, 100);
+    }
+
+    #[tokio::test]
+    async fn local_status_poll_renews_pairing_pin() {
+        let state = Arc::new(SessionState::new_for_tests(
+            "123456".to_string(),
+            state().audio_config().clone(),
+            Duration::from_secs(15),
+            Duration::from_millis(10),
+            5,
+            Duration::from_secs(1),
+        ));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let _ = status(State(Arc::clone(&state)), ConnectInfo(loopback())).await;
+
+        assert_eq!(
+            state.authorize_pairing_pin("123456").await,
+            crate::state::PairingPinResult::Accepted
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_status_poll_does_not_renew_pairing_pin() {
+        let state = Arc::new(SessionState::new_for_tests(
+            "123456".to_string(),
+            state().audio_config().clone(),
+            Duration::from_secs(15),
+            Duration::from_millis(10),
+            5,
+            Duration::from_secs(1),
+        ));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let _ = status(State(Arc::clone(&state)), ConnectInfo(remote())).await;
+
+        assert_eq!(
+            state.authorize_pairing_pin("123456").await,
+            crate::state::PairingPinResult::Expired
+        );
     }
 
     #[tokio::test]

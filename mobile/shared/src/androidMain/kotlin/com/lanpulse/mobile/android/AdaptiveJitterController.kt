@@ -14,6 +14,7 @@ internal class AdaptiveJitterController(
     private var lastTimestamp: Long? = null
     private var lastIncreaseNanos: Long? = null
     private var lowerTargetSinceNanos: Long? = null
+    private var holdTargetUntilNanos: Long = 0
 
     var targetPacketCount: Int = packetsForDuration(INITIAL_ADAPTIVE_BUFFER_MS, packetMs)
         private set
@@ -46,10 +47,33 @@ internal class AdaptiveJitterController(
         }
     }
 
-    fun onUnderrun(nowNanos: Long) {
-        targetPacketCount = (targetPacketCount + 1).coerceAtMost(maxPackets)
+    fun onUnderrun(nowNanos: Long, severityPackets: Int = 1) {
+        val increase = severityPackets.coerceIn(1, MAX_UNDERRUN_GROWTH_PACKETS)
+        targetPacketCount = (targetPacketCount + increase).coerceAtMost(maxPackets)
+        holdRaisedTarget(nowNanos)
+    }
+
+    fun onBacklog(nowNanos: Long) {
+        targetPacketCount = maxPackets
+        holdRaisedTarget(nowNanos)
+    }
+
+    private fun holdRaisedTarget(nowNanos: Long) {
         lastIncreaseNanos = nowNanos
         lowerTargetSinceNanos = null
+        holdTargetUntilNanos = maxOf(
+            holdTargetUntilNanos,
+            nowNanos + UNDERRUN_TARGET_HOLD_NANOS,
+        )
+    }
+
+    fun resetStreamTiming() {
+        jitterTicks = 0.0
+        lastArrivalNanos = null
+        lastTimestamp = null
+        lastIncreaseNanos = null
+        lowerTargetSinceNanos = null
+        holdTargetUntilNanos = 0
     }
 
     private fun adjustTarget(nowNanos: Long) {
@@ -65,6 +89,10 @@ internal class AdaptiveJitterController(
             }
             lowerTargetSinceNanos = null
         } else if (desiredPackets < targetPacketCount) {
+            if (nowNanos < holdTargetUntilNanos) {
+                lowerTargetSinceNanos = null
+                return
+            }
             val lowerSince = lowerTargetSinceNanos
             if (lowerSince == null) {
                 lowerTargetSinceNanos = nowNanos
@@ -78,15 +106,17 @@ internal class AdaptiveJitterController(
     }
 
     private companion object {
-        const val INITIAL_ADAPTIVE_BUFFER_MS = 15
-        const val MIN_ADAPTIVE_BUFFER_MS = 10
-        const val MAX_ADAPTIVE_BUFFER_MS = 60
+        const val INITIAL_ADAPTIVE_BUFFER_MS = 600
+        const val MIN_ADAPTIVE_BUFFER_MS = 500
+        const val MAX_ADAPTIVE_BUFFER_MS = 800
         const val JITTER_FILTER_DIVISOR = 16.0
         const val JITTER_SAFETY_MULTIPLIER = 4.0
         const val STABLE_NETWORK_MARGIN_MS = 1.0
         const val NANOS_PER_SECOND = 1_000_000_000.0
         const val TARGET_GROW_INTERVAL_NANOS = 250_000_000L
         const val TARGET_SHRINK_STABLE_NANOS = 5_000_000_000L
+        const val UNDERRUN_TARGET_HOLD_NANOS = 60_000_000_000L
+        const val MAX_UNDERRUN_GROWTH_PACKETS = 8
         const val UINT32_HALF_RANGE = 0x8000_0000L
 
         fun uint32Distance(from: Long, to: Long): Long = (to - from) and 0xFFFF_FFFFL

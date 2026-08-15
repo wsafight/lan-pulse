@@ -12,7 +12,6 @@ use crate::{
 
 const LANGUAGE_STORAGE_KEY: &str = "language";
 const SETTINGS_STORAGE_KEY: &str = "settings";
-const POLL_INTERVAL: Duration = Duration::from_millis(1200);
 const NOTICE_DURATION: Duration = Duration::from_millis(2800);
 
 struct Notice {
@@ -22,7 +21,6 @@ struct Notice {
 
 pub struct LanPulseApp {
     service: ServiceController,
-    last_poll: Instant,
     tray: TrayUi,
     tray_rx: mpsc::Receiver<TrayCommand>,
     language: Language,
@@ -47,7 +45,7 @@ impl LanPulseApp {
         settings.sanitize();
 
         let (tray, tray_rx) = tray::install(&cc.egui_ctx, language);
-        let mut service = ServiceController::default();
+        let mut service = ServiceController::new(cc.egui_ctx.clone());
         if settings.start_service_on_launch {
             service.start(&settings);
         }
@@ -59,7 +57,6 @@ impl LanPulseApp {
 
         Self {
             service,
-            last_poll: Instant::now(),
             tray,
             tray_rx,
             language,
@@ -116,7 +113,6 @@ impl LanPulseApp {
             UiAction::ToggleService => self.toggle_service(),
             UiAction::Refresh => {
                 self.service.refresh();
-                self.last_poll = Instant::now();
             }
             UiAction::CopyAddress => {
                 if let Some(url) = self
@@ -178,10 +174,6 @@ impl eframe::App for LanPulseApp {
         self.sync_service();
         self.handle_tray(ctx);
 
-        if self.last_poll.elapsed() >= POLL_INTERVAL {
-            self.service.refresh();
-            self.last_poll = Instant::now();
-        }
         ctx.request_repaint_after(repaint_interval(self.service.snapshot().is_busy()));
     }
 
@@ -339,7 +331,6 @@ mod tests {
         let settings = AppSettings::default();
         LanPulseApp {
             service: ServiceController::default(),
-            last_poll: Instant::now(),
             tray: tray::TrayUi::unavailable_for_tests(Language::En),
             tray_rx,
             language: Language::En,

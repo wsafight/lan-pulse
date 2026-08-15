@@ -1,6 +1,9 @@
 use std::{
     net::SocketAddr,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -11,7 +14,7 @@ use crate::config::AudioConfig;
 
 pub struct SessionState {
     pin: String,
-    pin_created_at: Instant,
+    pin_created_at: Mutex<Instant>,
     pairing_policy: PairingPolicy,
     pairing_security: RwLock<PairingSecurity>,
     audio: AudioConfig,
@@ -139,7 +142,7 @@ impl SessionState {
     ) -> Self {
         Self {
             pin,
-            pin_created_at: Instant::now(),
+            pin_created_at: Mutex::new(Instant::now()),
             pairing_policy,
             pairing_security: RwLock::new(PairingSecurity::default()),
             audio,
@@ -177,6 +180,13 @@ impl SessionState {
         self.pin == pin
     }
 
+    pub fn refresh_pairing_pin(&self) {
+        *self
+            .pin_created_at
+            .lock()
+            .expect("pairing PIN timestamp lock poisoned") = Instant::now();
+    }
+
     pub async fn authorize_pairing_pin(&self, pin: &str) -> PairingPinResult {
         let now = Instant::now();
         let mut security = self.pairing_security.write().await;
@@ -186,7 +196,11 @@ impl SessionState {
         {
             return PairingPinResult::Blocked;
         }
-        if now.duration_since(self.pin_created_at) >= self.pairing_policy.pin_ttl {
+        let pin_created_at = *self
+            .pin_created_at
+            .lock()
+            .expect("pairing PIN timestamp lock poisoned");
+        if now.duration_since(pin_created_at) >= self.pairing_policy.pin_ttl {
             return PairingPinResult::Expired;
         }
         if self.pin == pin {
@@ -521,6 +535,28 @@ mod tests {
         assert_eq!(
             state.authorize_pairing_pin("123456").await,
             PairingPinResult::Expired
+        );
+    }
+
+    #[tokio::test]
+    async fn refreshing_pairing_pin_renews_its_lifetime() {
+        let state = SessionState::with_policy(
+            "123456".to_string(),
+            state().audio_config().clone(),
+            Duration::from_secs(15),
+            PairingPolicy {
+                pin_ttl: Duration::from_millis(10),
+                max_failures: 5,
+                block_duration: Duration::from_secs(1),
+            },
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        state.refresh_pairing_pin();
+
+        assert_eq!(
+            state.authorize_pairing_pin("123456").await,
+            PairingPinResult::Accepted
         );
     }
 

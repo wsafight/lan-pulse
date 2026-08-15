@@ -14,7 +14,8 @@ internal class RtpJitterBuffer(
     private var pendingCount = 0
     private var expectedSequence: Int? = null
     private var latestSequence: Int? = null
-    private var consecutiveLatePackets = 0
+    private var sequenceRestartCandidate: Int? = null
+    private var sequenceRestartCandidatePackets = 0
 
     var duplicatePackets: Long = 0
         private set
@@ -40,11 +41,12 @@ internal class RtpJitterBuffer(
     fun offer(packet: RtpPacketBuffer) {
         val expected = expectedSequence
         if (expected != null && forwardDistance(expected, packet.sequence) >= HALF_SEQUENCE_RANGE) {
-            consecutiveLatePackets += 1
             latePackets += 1
-        } else {
-            consecutiveLatePackets = 0
+            observeSequenceRestartCandidate(packet.sequence, expected)
+            recycle(packet)
+            return
         }
+        clearSequenceRestartCandidate()
 
         val latest = latestSequence
         if (latest == null || isNewer(packet.sequence, latest)) {
@@ -74,7 +76,7 @@ internal class RtpJitterBuffer(
         val latest = checkNotNull(latestSequence)
         check(readyToStart())
         expectedSequence = (latest - targetPacketCount + 1) and SEQUENCE_MASK
-        consecutiveLatePackets = 0
+        clearSequenceRestartCandidate()
         pruneBeforeExpected()
     }
 
@@ -110,9 +112,11 @@ internal class RtpJitterBuffer(
         return bufferedLeadPackets() >= missingPacketLookahead()
     }
 
-    fun needsLatencyReset(): Boolean = bufferedLeadPackets() > maxBufferedPackets
+    fun needsLatencyReset(): Boolean =
+        bufferedLeadPackets() > maxBufferedPackets * LATENCY_RESET_MULTIPLIER
 
-    fun needsSequenceReset(): Boolean = consecutiveLatePackets >= LATE_PACKET_RESET_THRESHOLD
+    fun needsSequenceReset(): Boolean =
+        sequenceRestartCandidatePackets >= LATE_PACKET_RESET_THRESHOLD
 
     fun reset() {
         slots.indices.forEach { slot ->
@@ -122,7 +126,7 @@ internal class RtpJitterBuffer(
         pendingCount = 0
         expectedSequence = null
         latestSequence = null
-        consecutiveLatePackets = 0
+        clearSequenceRestartCandidate()
     }
 
     internal fun bufferedLeadPackets(): Int {
@@ -160,12 +164,38 @@ internal class RtpJitterBuffer(
         }
     }
 
+    private fun observeSequenceRestartCandidate(sequence: Int, expected: Int) {
+        val packetsBehind = forwardDistance(sequence, expected)
+        val normalHistoryPackets = maxBufferedPackets * STORED_PACKET_MULTIPLIER
+        if (packetsBehind <= normalHistoryPackets) {
+            clearSequenceRestartCandidate()
+            return
+        }
+
+        val previousCandidate = sequenceRestartCandidate
+        val advancesCandidate = previousCandidate != null &&
+            forwardDistance(previousCandidate, sequence) in 1..MAX_RESTART_CANDIDATE_GAP
+        sequenceRestartCandidatePackets = if (advancesCandidate) {
+            sequenceRestartCandidatePackets + 1
+        } else {
+            1
+        }
+        sequenceRestartCandidate = sequence
+    }
+
+    private fun clearSequenceRestartCandidate() {
+        sequenceRestartCandidate = null
+        sequenceRestartCandidatePackets = 0
+    }
+
     private fun missingPacketLookahead(): Int = max(1, targetPacketCount / 2)
 
     internal companion object {
         const val SEQUENCE_MASK = 0xFFFF
         const val HALF_SEQUENCE_RANGE = 0x8000
         const val LATE_PACKET_RESET_THRESHOLD = 4
+        const val MAX_RESTART_CANDIDATE_GAP = 4
+        const val LATENCY_RESET_MULTIPLIER = 3
         const val STORED_PACKET_MULTIPLIER = 4
 
         fun nextSequence(sequence: Int): Int = (sequence + 1) and SEQUENCE_MASK
